@@ -1,20 +1,3 @@
-// ///////////////////////////////////////////////////////////////////
-// This file is a part of EasyFarm for Final Fantasy XI
-// Copyright (C) 2013 Mykezero
-//  
-// EasyFarm is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//  
-// EasyFarm is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-// GNU General Public License for more details.
-// 
-// You should have received a copy of the GNU General Public License
-// If not, see <http://www.gnu.org/licenses/>.
-// ///////////////////////////////////////////////////////////////////
 using System.Collections.ObjectModel;
 using EasyFarm.Classes;
 using EasyFarm.States;
@@ -29,6 +12,7 @@ namespace EasyFarm.Tests.TestTypes.Mocks
         public bool ClaimedFilter { get; set; }
         public double DetectionDistance { get; set; }
         public int GlobalCooldown { get; set; }
+        public int PullCooldown { get; set; }
         public double HeightThreshold { get; set; }
         public int HighHealth { get; set; }
         public int HighMagic { get; set; }
@@ -55,10 +39,5 @@ namespace EasyFarm.Tests.TestTypes.Mocks
         public double FollowDistance { get; set; }
         public string FollowedPlayer { get; set; }
         public Route Route { get; set; } = new Route();
-
-        public MockConfig()
-        {
-            BattleLists = new BattleLists(Config.Instance.BattleLists);
-        }
     }
 }
