@@ -1,12 +1,12 @@
 ﻿// ///////////////////////////////////////////////////////////////////
 // This file is a part of EasyFarm for Final Fantasy XI
-// Copyright (C) 2013 Mykezero
-//  
+// Copyright (C) 2013-2017 Mykezero
+// 
 // EasyFarm is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//  
+// 
 // EasyFarm is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -15,6 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // If not, see <http://www.gnu.org/licenses/>.
 // ///////////////////////////////////////////////////////////////////
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -48,7 +49,6 @@ namespace MemoryAPI.Memory
             Windower = new WindowerTools(eliteApi);
             Chat = new ChatTools(eliteApi);
             Resource = new ResourcesTools(eliteApi);
-            Follow = new FollowTools(eliteApi);
 
             for (byte i = 0; i < 16; i++)
             {
@@ -68,27 +68,12 @@ namespace MemoryAPI.Memory
                 _api = api;
             }
 
-            private static float Bearing(Position player, Position position)
-            {
-                var bearing = -Math.Atan2(position.Z - player.Z, position.X - player.X);
-
-                return (float)bearing;
-            }
-
             public void FaceHeading(Position position)
             {
                 var player = _api.Entity.GetLocalPlayer();
-                var playerPosition = new Position();
-                playerPosition.X = player.X;
-                playerPosition.Y = player.Y;
-                playerPosition.Z = player.Z;
-                playerPosition.H = player.H;
-
-                var radian = Bearing(playerPosition, position);
-                //if (_api.Player.H != radian)
-                //{
-                //    SetViewMode(ViewMode.FirstPerson);
-                //}
+                var angle = (byte)(Math.Atan((position.Z - player.Z) / (position.X - player.X)) * -(128.0f / Math.PI));
+                if (player.X > position.X) angle += 128;
+                var radian = (float)angle / 255 * 2 * Math.PI;
                 _api.Entity.SetEntityHPosition(_api.Entity.LocalPlayerIndex, (float)radian);
             }
 
@@ -102,19 +87,19 @@ namespace MemoryAPI.Memory
                     Math.Pow(position.Z - player.Z, 2));
             }
 
-            public void GotoWaypoint(Position position, bool keepRunning)
+            public void GotoWaypoint(Position position, bool useObjectAvoidance, bool keepRunning)
             {
                 if (!(DistanceTo(position) > DistanceTolerance)) return;
-                MoveForwardTowardsPosition(() => position);
+                MoveForwardTowardsPosition(() => position, useObjectAvoidance);
                 if (!keepRunning) Reset();
             }
 
-            public void GotoNPC(int id, Position position, bool keepRunning)
+            public void GotoNPC(int id, bool useObjectAvoidance)
             {
-                if (!(DistanceTo(position) > DistanceTolerance)) return;
-                GotoWaypoint(position, true);
+                MoveForwardTowardsPosition(() => GetEntityPosition(id), useObjectAvoidance);
                 KeepOneYalmBack(GetEntityPosition(id));
-                if (!keepRunning) Reset();
+                FaceHeading(GetEntityPosition(id));
+                Reset();
             }
 
             private Position GetEntityPosition(int id)
@@ -125,14 +110,21 @@ namespace MemoryAPI.Memory
             }            
 
             private void MoveForwardTowardsPosition(
-                Func<Position> targetPosition)
+                Func<Position> targetPosition,
+                bool useObjectAvoidance)
             {
+                if (!(DistanceTo(targetPosition()) > DistanceTolerance)) return;
+
                 DateTime duration = DateTime.Now.AddSeconds(5);
 
-                FaceHeading(targetPosition());
-                _api.ThirdParty.KeyDown(Keys.NUMPAD8);
-                
-                AvoidObstacles();
+                while (DistanceTo(targetPosition()) > DistanceTolerance && DateTime.Now < duration)
+                {
+                    SetViewMode(ViewMode.FirstPerson);
+                    FaceHeading(targetPosition());
+                    _api.ThirdParty.KeyDown(Keys.NUMPAD8);
+                    if (useObjectAvoidance) AvoidObstacles();
+                    Thread.Sleep(100);
+                }
             }
 
             private void KeepRunningWithKeyboard()
@@ -149,6 +141,7 @@ namespace MemoryAPI.Memory
 
                 while (DistanceTo(position) <= TooCloseDistance && DateTime.Now < duration)
                 {
+                    SetViewMode(ViewMode.FirstPerson);
                     FaceHeading(position);
                     Thread.Sleep(30);
                 }
@@ -188,12 +181,9 @@ namespace MemoryAPI.Memory
             {
                 var firstX = _api.Player.X;
                 var firstZ = _api.Player.Z;
-                var checkTime = 0.1;
-                var playerSpeed = _api.Player.Speed;
-                var expectedDelta = checkTime / playerSpeed;
-                Thread.Sleep(TimeSpan.FromSeconds(checkTime));
+                Thread.Sleep(TimeSpan.FromSeconds(0.5));
                 var dchange = Math.Pow(firstX - _api.Player.X, 2) + Math.Pow(firstZ - _api.Player.Z, 2);
-                return Math.Abs(dchange) < expectedDelta;
+                return Math.Abs(dchange) < 1;
             }
 
             /// <summary>
@@ -230,7 +220,7 @@ namespace MemoryAPI.Memory
                 {
                     _api.Entity.GetLocalPlayer().H = _api.Player.H + (float)(Math.PI / 180 * dir);
                     _api.ThirdParty.KeyDown(Keys.NUMPAD8);
-                    Thread.Sleep(TimeSpan.FromSeconds(1));
+                    Thread.Sleep(TimeSpan.FromSeconds(2));
                     _api.ThirdParty.KeyUp(Keys.NUMPAD8);
                     count++;
                     if (count == 4)
@@ -289,6 +279,11 @@ namespace MemoryAPI.Memory
             }
 
             public string Name(int id) { return _api.GetCachedEntity(id).Name; }
+
+            public int TargetingIndex(int id)
+            {
+                return (int)_api.GetCachedEntity(id).TargetingIndex;
+            }
 
             public NpcType NPCType(int id)
             {
@@ -365,6 +360,41 @@ namespace MemoryAPI.Memory
                     }
 
                     return result.Value;
+                }
+            }
+
+            /// <summary>
+            ///     Entity (unit array) index of this party member, straight
+            ///     from the party structure. 0 when absent.
+            /// </summary>
+            public int TargetIndex
+            {
+                get
+                {
+                    try
+                    {
+                        var member = _api.Party.GetPartyMember(_index);
+                        return member == null ? 0 : (int)member.TargetIndex;
+                    }
+                    catch
+                    {
+                        return 0;
+                    }
+                }
+            }
+
+            /// <summary>
+            ///     Combat status of the party member, resolved through the
+            ///     entity table. Returns Unknown when the entity is not in
+            ///     range or the table is stale.
+            /// </summary>
+            public Status Status
+            {
+                get
+                {
+                    var entity = FindEntityByServerId(ServerID);
+                    if (entity == null) return Status.Unknown;
+                    return (Status)entity.Status;
                 }
             }
 
@@ -533,27 +563,6 @@ namespace MemoryAPI.Memory
                 {
                     ChatEntries.Enqueue(chatEntry);
                 }
-            }
-        }
-
-        public class FollowTools : IFollowTools
-        {
-            private readonly EliteAPI _api;
-
-            public FollowTools(EliteAPI api)
-            {
-                _api = api;
-            }
-
-            public void SetFollowCoords(float x, float y, float z)
-            {
-                _api.AutoFollow.SetAutoFollowCoords(x, y, z);
-                _api.AutoFollow.IsAutoFollowing = true;
-            }
-
-            public void Reset()
-            {
-                _api.AutoFollow.IsAutoFollowing = false;
             }
         }
     }

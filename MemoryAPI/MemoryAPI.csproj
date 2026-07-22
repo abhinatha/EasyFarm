@@ -9,7 +9,7 @@
     <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>MemoryAPI</RootNamespace>
     <AssemblyName>MemoryAPI</AssemblyName>
-    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.8</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <TargetFrameworkProfile />
   </PropertyGroup>
@@ -54,7 +54,6 @@
     <Compile Include="Enums\enums.cs" />
     <Compile Include="Enums\NPCType.cs" />
     <Compile Include="Enums\Structures.cs" />
-    <Compile Include="Follow\IFollowTools.cs" />
     <Compile Include="Helpers.cs" />
     <Compile Include="IMemoryAPI.cs" />
     <Compile Include="Memory\EliteApiExtensions.cs" />

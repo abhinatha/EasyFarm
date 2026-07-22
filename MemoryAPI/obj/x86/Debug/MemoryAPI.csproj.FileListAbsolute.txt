@@ -1,0 +1,8 @@
+C:\Users\leviz\Desktop\EasyFarm-31197c1e839a31615cd5bab4e4101b964eece4e6\MemoryAPI\bin\Debug\MemoryAPI.dll
+C:\Users\leviz\Desktop\EasyFarm-31197c1e839a31615cd5bab4e4101b964eece4e6\MemoryAPI\bin\Debug\MemoryAPI.pdb
+C:\Users\leviz\Desktop\EasyFarm-31197c1e839a31615cd5bab4e4101b964eece4e6\MemoryAPI\bin\Debug\EliteMMO.API.dll
+C:\Users\leviz\Desktop\EasyFarm-31197c1e839a31615cd5bab4e4101b964eece4e6\MemoryAPI\obj\x86\Debug\MemoryAPI.csproj.AssemblyReference.cache
+C:\Users\leviz\Desktop\EasyFarm-31197c1e839a31615cd5bab4e4101b964eece4e6\MemoryAPI\obj\x86\Debug\MemoryAPI.csproj.CoreCompileInputs.cache
+C:\Users\leviz\Desktop\EasyFarm-31197c1e839a31615cd5bab4e4101b964eece4e6\MemoryAPI\obj\x86\Debug\MemoryAPI.csproj.Up2Date
+C:\Users\leviz\Desktop\EasyFarm-31197c1e839a31615cd5bab4e4101b964eece4e6\MemoryAPI\obj\x86\Debug\MemoryAPI.dll
+C:\Users\leviz\Desktop\EasyFarm-31197c1e839a31615cd5bab4e4101b964eece4e6\MemoryAPI\obj\x86\Debug\MemoryAPI.pdb

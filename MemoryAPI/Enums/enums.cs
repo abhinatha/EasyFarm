@@ -1,12 +1,12 @@
 ﻿// ///////////////////////////////////////////////////////////////////
 // This file is a part of EasyFarm for Final Fantasy XI
-// Copyright (C) 2013 Mykezero
-//  
+// Copyright (C) 2013-2017 Mykezero
+// 
 // EasyFarm is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//  
+// 
 // EasyFarm is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -671,14 +671,14 @@ namespace MemoryAPI
         Meriphataud_Mountains_S = 97,
         Sauromugue_Champaign_S = 98,
         Castle_Oztroja_S = 99,
-        West_Ronfaure = 100,
-        East_Ronfaure = 101,
+        Ronfaure_West = 100,
+        Ronfaure_East = 101,
         La_Theine_Plateau = 102,
         Valkurm_Dunes = 103,
         Jugner_Forest = 104,
         Batallia_Downs = 105,
-        North_Gustaberg = 106,
-        South_Gustaberg= 107,
+        Gustaberg_North = 106,
+        Gustaberg_South = 107,
         Konschtat_Highlands = 108,
         Pashhow_Marshlands = 109,
         Rolanberry_Fields = 110,
@@ -686,8 +686,8 @@ namespace MemoryAPI
         Xarcabard = 112,
         Cape_Teriggan = 113,
         Altepa_Eastern_Desert = 114,
-        West_Sarutabaruta = 115,
-        East_Sarutabaruta = 116,
+        Sarutabaruta_West = 115,
+        Sarutabaruta_East = 116,
         Tahrongi_Canyon = 117,
         Buburimu_Peninsula = 118,
         Meriphataud_Mountains = 119,
