@@ -1,12 +1,12 @@
 ﻿// ///////////////////////////////////////////////////////////////////
 // This file is a part of EasyFarm for Final Fantasy XI
-// Copyright (C) 2013 Mykezero
-//  
+// Copyright (C) 2013-2017 Mykezero
+// 
 // EasyFarm is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//  
+// 
 // EasyFarm is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -58,22 +58,6 @@ namespace EasyFarm.Classes
             // Type is not mob
             if (!mob.NpcType.Equals(NpcType.Mob)) return false;
 
-            // Kill aggro if aggro's checked regardless of target's list but follows the ignored list.
-            if (mob.HasAggroed) return true;
-
-            // NM Huntinng
-            if (Config.Instance.IsNMHunting)
-            {
-                if (mob.Name == Config.Instance.NotoriousMonsterName) return true;
-
-                if (Config.Instance.PlaceholderIDs.Any())
-                {
-                    var placeholderIds = Config.Instance.PlaceholderIDs.Select(x => Convert.ToInt32(x, 16));
-                    return placeholderIds.Where(x => mob.Id == x).Any();
-                }
-            }
-
-
             // Mob is out of range
             if (!(mob.Distance < config.DetectionDistance)) return false;
 
@@ -82,7 +66,16 @@ namespace EasyFarm.Classes
             // If any unit is within the wander distance then the
             if (config.Route.Waypoints.Any())
             {
-                if (!config.Route.Waypoints.Any(waypoint => Distance(mob, waypoint) <= config.WanderDistance)) return false;
+                if (!(config.Route.Waypoints.Any(waypoint => Distance(mob, waypoint) <= config.WanderDistance))) return false;
+            }
+
+            // Temporarily blacklisted (e.g. after a stalemated fight).
+            if (TargetBlacklist.IsBlacklisted(mob.Id)) return false;
+
+            // Camp mode: only mobs within CampRadius of the camp are valid.
+            if (config.IsCampEnabled && config.IsCampSet)
+            {
+                if (Distance(mob, config.CampPosition) > config.CampRadius) return false;
             }
 
             // Mob too high out of reach.
@@ -95,11 +88,18 @@ namespace EasyFarm.Classes
             if (MatchAny(mob.Name, config.IgnoredMobs,
                 RegexOptions.IgnoreCase)) return false;
 
+            // Kill aggro if aggro's checked regardless of target's list but follows the ignored list.
+            if (mob.HasAggroed && config.AggroFilter) return true;
+
             // There is a target's list but the mob is not on it.
             if (!MatchAny(mob.Name, config.TargetedMobs, RegexOptions.IgnoreCase) &&
                 config.TargetedMobs.Any())
                 return false;
 
+            // Mob on our targets list or not on our ignore list.
+
+            // Kill the creature if it has aggroed and aggro is checked.
+            if (mob.HasAggroed && config.AggroFilter) return true;
 
             // Kill the creature if it is claimed by party and party is checked.
             if (mob.PartyClaim && config.PartyFilter) return true;

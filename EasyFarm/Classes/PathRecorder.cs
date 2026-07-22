@@ -1,12 +1,12 @@
 ﻿// ///////////////////////////////////////////////////////////////////
 // This file is a part of EasyFarm for Final Fantasy XI
-// Copyright (C) 2013 Mykezero
-//  
+// Copyright (C) 2013-2017 Mykezero
+// 
 // EasyFarm is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//  
+// 
 // EasyFarm is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -48,8 +48,6 @@ namespace EasyFarm.Classes
         ///     (Identicle waypoints are allowed, just not in succession.)
         /// </summary>
         private Position _lastPosition;
-
-        private float _recordDistance = 30;
 
         /// <summary>
         /// The memory source to retrieve the character's position from. 
@@ -98,8 +96,7 @@ namespace EasyFarm.Classes
         {
             _recorder.Stop();
             IsRecording = false;
-        }   
-        
+        }        
 
         /// <summary>
         ///     Records a new path for the player to travel.
@@ -128,7 +125,8 @@ namespace EasyFarm.Classes
             // Update the path if we've changed out position. Rotating our heading does not
             // count as the player moving. 
             if (_lastPosition == null ||
-                position.Distance(_lastPosition) >= _recordDistance)
+                position.X != _lastPosition.X ||
+                position.Z != _lastPosition.Z)
             {
                 // Fire positon added event. 
                 OnPositionAdded?.Invoke(position);

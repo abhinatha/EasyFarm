@@ -1,12 +1,12 @@
 // ///////////////////////////////////////////////////////////////////
 // This file is a part of EasyFarm for Final Fantasy XI
-// Copyright (C) 2013 Mykezero
-//  
+// Copyright (C) 2013-2017 Mykezero
+// 
 // EasyFarm is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//  
+// 
 // EasyFarm is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -18,33 +18,12 @@
 using MemoryAPI;
 using System;
 using System.Linq;
-using EasyFarm.UserSettings;
 using MemoryAPI.Navigation;
 
 namespace EasyFarm.Classes
 {
     public class Unit : IUnit
     {
-        /// <summary>
-        ///     Holds all the game's data.
-        /// </summary>
-        private readonly IMemoryAPI _fface;
-
-        /// <summary>
-        ///     Holds the data about units.
-        /// </summary>
-        private readonly INPCTools _npc;
-
-        /// <summary>
-        ///     Determines whether unit is valid.
-        /// </summary>
-        private readonly UnitFilters _unitFilters = new UnitFilters();
-
-        /// <summary>
-        ///     Users settings which control whether this unit is valid.
-        /// </summary>
-        private readonly IConfig _config = new ProxyConfig();
-
         public Unit(IMemoryAPI fface, int id)
         {
             // Set this unit's session data. 
@@ -55,7 +34,17 @@ namespace EasyFarm.Classes
 
             // Set the NPC information.
             _npc = _fface.NPC;
-        }        
+        }
+
+        /// <summary>
+        ///     Holds all the game's data.
+        /// </summary>
+        private readonly IMemoryAPI _fface;
+
+        /// <summary>
+        ///     Holds the data about units.
+        /// </summary>
+        private readonly INPCTools _npc;
 
         /// <summary>
         ///     The unit's id.
@@ -183,6 +172,8 @@ namespace EasyFarm.Classes
         /// <summary>
         ///     If the unit has aggroed our player.
         /// </summary>
+        public int TargetingIndex => _npc.TargetingIndex(Id);
+
         public bool HasAggroed
         {
             get { return (!IsClaimed || MyClaim) && Status == Status.Fighting; }
@@ -232,12 +223,6 @@ namespace EasyFarm.Classes
 
                 return playerIds.Any(x => _npc.PetID(x) == Id);
             }
-        }
-
-        public bool IsValid
-        {
-            get => _unitFilters.MobFilter(_fface, this, _config);
-            set => throw new NotImplementedException();
         }
     }
 }

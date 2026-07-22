@@ -1,12 +1,12 @@
 ﻿// ///////////////////////////////////////////////////////////////////
 // This file is a part of EasyFarm for Final Fantasy XI
-// Copyright (C) 2013 Mykezero
-//  
+// Copyright (C) 2013-2017 Mykezero
+// 
 // EasyFarm is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//  
+// 
 // EasyFarm is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -22,7 +22,6 @@ using System.Linq;
 using EasyFarm.Parsing;
 using EasyFarm.UserSettings;
 using MemoryAPI;
-using MemoryAPI.Navigation;
 using StatusEffect = MemoryAPI.StatusEffect;
 
 namespace EasyFarm.Classes
@@ -30,7 +29,6 @@ namespace EasyFarm.Classes
     public class Executor
     {
         private readonly IMemoryAPI _fface;
-        public String LastCommand { get; set; }
 
         public Executor(IMemoryAPI fface)
         {
@@ -84,75 +82,43 @@ namespace EasyFarm.Classes
             }
         }   
 
-        public void UseTargetedActions(EasyFarm.Context.IGameContext context, IEnumerable<BattleAbility> actions, IUnit target)
+        public void UseTargetedActions(IEnumerable<BattleAbility> actions, IUnit target)
         {
             if (actions == null) throw new ArgumentNullException(nameof(actions));
             if (target == null) throw new ArgumentNullException(nameof(target));
 
             foreach (var action in actions)
             {
-                var isInRange = MoveIntoActionRange(context, target, action);
-
+                MoveIntoActionRange(target, action);
                 _fface.Navigator.FaceHeading(target.Position);
                 Player.SetTarget(_fface, target);
 
-                if (isInRange)
+                _fface.Navigator.Reset();
+                TimeWaiter.Pause(100);
+
+                if (ResourceHelper.IsSpell(action.AbilityType))
                 {
-
-                    _fface.Navigator.Reset();
-                    TimeWaiter.Pause(100);
-
-                    if (ResourceHelper.IsSpell(action.AbilityType))
-                    {
-                        CastSpell(action);
-                    }
-                    else
-                    {
-                        CastAbility(action);
-                    }
-
-                    action.Usages++;
-                    action.LastCast = DateTime.Now.AddSeconds(action.Recast);
-
-                    TimeWaiter.Pause(Config.Instance.GlobalCooldown);
+                    CastSpell(action);
                 }
+                else
+                {
+                    CastAbility(action);
+                }
+
+                action.Usages++;
+                action.LastCast = DateTime.Now.AddSeconds(action.Recast);
+
+                TimeWaiter.Pause(Config.Instance.GlobalCooldown);
             }
         }
 
-        private bool MoveIntoActionRange(EasyFarm.Context.IGameContext context, IUnit target, BattleAbility action)
+        private void MoveIntoActionRange(IUnit target, BattleAbility action)
         {
             if (target.Distance > action.Distance)
             {
-                var path = context.NavMesh.FindPathBetween(context.API.Player.Position, context.Target.Position);
-                if (path.Count > 0)
-                {
-                    if (path.Count > 1)
-                    {
-                        _fface.Navigator.DistanceTolerance = 0.5;
-                    }
-                    else
-                    {
-                        _fface.Navigator.DistanceTolerance = action.Distance;
-                    }
-
-                    while (path.Count > 0 && path.Peek().Distance(context.API.Player.Position) <= _fface.Navigator.DistanceTolerance)
-                    {
-                        path.Dequeue();
-                    }
-
-                    if (path.Count > 0)
-                    {
-                        context.API.Navigator.GotoNPC(target.Id, path.Peek(), true);
-                    } else
-                    {
-                        context.API.Navigator.Reset();
-                    }
-                }
-
-                return false;
+                _fface.Navigator.DistanceTolerance = action.Distance;
+                _fface.Navigator.GotoNPC(target.Id, Config.Instance.IsObjectAvoidanceEnabled);
             }
-
-            return true;
         }        
 
         private bool EnsureCast(string command)
@@ -180,7 +146,7 @@ namespace EasyFarm.Classes
                 }                             
 
                 if (Math.Abs(previous - _fface.Player.CastPercentEx) > .5) return true;
-                SendCommand(command);
+                _fface.Windower.SendString(command);
                 TimeWaiter.Pause(500);
             }
 
@@ -214,15 +180,9 @@ namespace EasyFarm.Classes
 
         private bool CastAbility(BattleAbility ability)
         {
-            SendCommand(ability.Command);
+            _fface.Windower.SendString(ability.Command);
             TimeWaiter.Pause(100);
             return true;
-        }
-
-        private void SendCommand(String command)
-        {
-            LastCommand = command;
-            _fface.Windower.SendString(command);
         }
 
         private bool CastSpell(BattleAbility ability)
