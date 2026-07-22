@@ -47,7 +47,7 @@ namespace EasyFarm.States
         // Player never reaches Fighting and the target takes no damage
         // (unclaimed wandering mob we chase but never lock onto).
         private const int FailedEngageSeconds = 20;
-        private const int FailedEngageBlacklistMinutes = 3;
+        private const int FailedEngageSkipMinutes = 3;
 
         private static int _watchTargetId;
         private static short _watchTargetHpp;
@@ -69,6 +69,8 @@ namespace EasyFarm.States
             _feTargetId = 0;
             _feTargetHpp = 0;
             _feFailingSince = DateTime.MinValue;
+
+            FailedEngageSkip.Clear();
         }
 
         private bool FightIsStalemated()
@@ -130,7 +132,11 @@ namespace EasyFarm.States
             // Standing) is exactly the pathology, so a real fight - where
             // Player.Status == Fighting even during a trust resummon - never
             // trips this.
-            if (!IsFighting ||
+            // Attacker check: a mob hitting us is never dropped here -
+            // blacklisting it just makes us ignore it while it keeps beating
+            // on us and we pull a fresh mob. Only mobs we chase but that
+            // ignore us (AggroUs:none) get dropped.
+            if (!IsFighting || TargetIsAttacker ||
                 Target == null || !Target.IsActive || Target.IsDead ||
                 EliteApi.Player.Status.Equals(Status.Fighting))
             {
@@ -153,9 +159,14 @@ namespace EasyFarm.States
             if (DateTime.Now < _feFailingSince.AddSeconds(FailedEngageSeconds)) return false;
 
             Diagnostics.CombatDiag.Event(string.Format(
-                "FAILED-ENGAGE {0}[{1}] hp:{2}% intent but Standing for {3}s - dropping, blacklisted {4}min",
-                Target.Name, Target.Id, Target.HppCurrent, FailedEngageSeconds, FailedEngageBlacklistMinutes));
-            TargetBlacklist.Add(Target.Id, FailedEngageBlacklistMinutes);
+                "FAILED-ENGAGE {0}[{1}] hp:{2}% intent but Standing for {3}s - dropping, skipped {4}min",
+                Target.Name, Target.Id, Target.HppCurrent, FailedEngageSeconds, FailedEngageSkipMinutes));
+            // Soft skip, NOT TargetBlacklist. Normal selection avoids this id
+            // so we rotate onto a fresh mob; the aggro override ignores it so
+            // if this mob later actually attacks us we still turn and fight.
+            // Keeping it off the hard blacklist is what stops this recovery
+            // from also un-hiding stalemate-blacklisted mobs from the override.
+            FailedEngageSkip.Add(Target.Id, FailedEngageSkipMinutes);
             IsFighting = false;
             Target = null;
             _feFailingSince = DateTime.MinValue;
@@ -208,6 +219,52 @@ namespace EasyFarm.States
 
             // Reset all usage data to begin a new battle.
             foreach (var action in Config.BattleLists.Actions) action.Usages = 0;
+        }
+    }
+
+    /// <summary>
+    ///     Transient skip-list for mobs we issued /attack at but never
+    ///     engaged (Player stayed Standing, target took no damage).
+    ///     Deliberately separate from the hard <see cref="Classes.TargetBlacklist"/>:
+    ///     - normal target selection skips these ids, so we rotate onto a
+    ///       fresh mob instead of re-locking the same un-engageable one;
+    ///     - the aggro override in SetTargetState ignores this list, so a
+    ///       skipped mob that later actually attacks us (add / link) is still
+    ///       picked up and fought.
+    ///     Keeping these off TargetBlacklist is what prevents the failed-
+    ///     engage recovery from also un-hiding stalemate-blacklisted mobs
+    ///     (unkillable flyers) from the override.
+    /// </summary>
+    public static class FailedEngageSkip
+    {
+        private static readonly object Gate = new object();
+
+        private static readonly System.Collections.Generic.Dictionary<int, DateTime> Until
+            = new System.Collections.Generic.Dictionary<int, DateTime>();
+
+        public static void Add(int id, int minutes)
+        {
+            lock (Gate) Until[id] = DateTime.Now.AddMinutes(minutes);
+        }
+
+        public static bool IsSkipped(int id)
+        {
+            lock (Gate)
+            {
+                DateTime until;
+                if (!Until.TryGetValue(id, out until)) return false;
+                if (DateTime.Now >= until)
+                {
+                    Until.Remove(id);
+                    return false;
+                }
+                return true;
+            }
+        }
+
+        public static void Clear()
+        {
+            lock (Gate) Until.Clear();
         }
     }
 }

@@ -98,8 +98,16 @@ namespace EasyFarm.States
                     DateTime.Now < _lastCombat.AddSeconds(Config.PullCooldown))
                     return false;
 
-                // First get the first mob by distance.
-                var mobs = UnitService.MobArray.Where(x => UnitFilters.MobFilter(EliteApi, x, Config)).ToList();
+                // First get the first mob by distance. Exclude ids we just
+                // failed to engage (Standing, no damage) so we rotate onto a
+                // fresh mob instead of re-locking the same un-engageable one.
+                // The aggro override above does NOT consult this list, so a
+                // skipped mob that starts actually attacking us is still
+                // acquired there.
+                var mobs = UnitService.MobArray
+                    .Where(x => UnitFilters.MobFilter(EliteApi, x, Config))
+                    .Where(x => !FailedEngageSkip.IsSkipped(x.Id))
+                    .ToList();
                 // Isolation-aware: prefer candidates with the fewest live
                 // neighbors so the bot fights at the edge of a cluster
                 // instead of inside it (stationary mobs wake when the party
