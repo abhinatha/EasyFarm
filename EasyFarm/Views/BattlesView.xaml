@@ -74,7 +74,11 @@
                       Grid.Column="0"
                       Grid.ColumnSpan="2"
                       ItemsSource="{Binding BattleLists}"
-                      SelectedItemChanged="Master_OnSelectedItemChanged">
+                      SelectedItemChanged="Master_OnSelectedItemChanged"
+                      AllowDrop="True"
+                      PreviewMouseLeftButtonDown="Master_OnPreviewMouseLeftButtonDown"
+                      PreviewMouseMove="Master_OnPreviewMouseMove"
+                      Drop="Master_OnDrop">
             </TreeView>
 
             <!-- Splitter -->

@@ -1,12 +1,12 @@
 ﻿// ///////////////////////////////////////////////////////////////////
 // This file is a part of EasyFarm for Final Fantasy XI
-// Copyright (C) 2013 Mykezero
-//  
+// Copyright (C) 2013-2017 Mykezero
+// 
 // EasyFarm is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//  
+// 
 // EasyFarm is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -27,6 +27,8 @@ namespace EasyFarm.ViewModels
         public FollowViewModel()
         {
             ViewName = "Follow";
+            AppServices.RegisterEvent<Infrastructure.Events.FollowChangedEvent>(
+                this, e => RaisePropertyChanged(nameof(Name)));
         }
 
         public string Name
@@ -37,6 +39,18 @@ namespace EasyFarm.ViewModels
                 Config.Instance.FollowedPlayer = value;
                 AppServices.InformUser("Now following {0}.", value);
             }
+        }
+
+        public string FollowMePhrase
+        {
+            get { return Config.Instance.FollowMePhrase; }
+            set { Set(ref Config.Instance.FollowMePhrase, value); }
+        }
+
+        public string StopFollowPhrase
+        {
+            get { return Config.Instance.StopFollowPhrase; }
+            set { Set(ref Config.Instance.StopFollowPhrase, value); }
         }
 
         public double Distance

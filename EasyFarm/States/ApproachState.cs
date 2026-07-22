@@ -1,12 +1,12 @@
 ﻿// ///////////////////////////////////////////////////////////////////
 // This file is a part of EasyFarm for Final Fantasy XI
-// Copyright (C) 2013 Mykezero
-//  
+// Copyright (C) 2013-2017 Mykezero
+// 
 // EasyFarm is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//  
+// 
 // EasyFarm is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -15,97 +15,117 @@
 // You should have received a copy of the GNU General Public License
 // If not, see <http://www.gnu.org/licenses/>.
 // ///////////////////////////////////////////////////////////////////
+
 using System.Linq;
 using EasyFarm.Classes;
-using EasyFarm.Context;
 using EasyFarm.UserSettings;
 using MemoryAPI;
-using MemoryAPI.Navigation;
-using Player = EasyFarm.Classes.Player;
 
 namespace EasyFarm.States
 {
     /// <summary>
     ///     Moves to target enemies.
     /// </summary>
-    public class ApproachState : BaseState
+    public class ApproachState : AgentState
     {
-        public override bool Check(IGameContext context)
+        public ApproachState(StateMemory memory) : base(memory)
         {
-            if (new RestState().Check(context)) return false;
+        }
+
+        public override bool Check()
+        {
+            if (new RestState(Memory).Check()) return false;
 
             // Make sure we don't need trusts
-            if (new SummonTrustsState().Check(context)) return false;
+            if (new SummonTrustsState(Memory).Check()) return false;
 
-            // Target dead or null.
-            if (!context.Target.IsValid) return false;
+            // Target dead or null. Engaged live targets and mobs attacking
+            // us always count as valid so we keep closing distance through
+            // filter flicker / detection limits.
+            if (!IsEngagedWithLiveTarget && !TargetIsAttacker &&
+                !UnitFilters.MobFilter(EliteApi, Target, Config)) return false;
 
             // We should approach mobs that have aggroed or have been pulled. 
-            if (context.Target.Status.Equals(Status.Fighting)) return true;
+            if (Target.Status.Equals(Status.Fighting)) return true;
 
             // Get usable abilities. 
-            var usable = context.Config.BattleLists["Pull"].Actions
-                .Where(x => ActionFilters.BuffingFilter(context.API, x));
+            var usable = Config.BattleLists["Pull"].Actions
+                .Where(x => ActionFilters.BuffingFilter(EliteApi, x));
 
             // Approach when there are no pulling moves available. 
             if (!usable.Any()) return true;
 
             // Approach mobs if their distance is close. 
-            return context.Target.Distance < 8;
+            return Target.Distance < 8;
         }
 
-        public override void Run(IGameContext context)
+        public override void Run()
         {
-            // Target mob if not currently targeted. 
-            Player.SetTarget(context.API, context.Target);
+            // Chat-commanded pull hold: do not start anything new while a
+            // hold is armed/active. Current fights are unaffected.
+            if (!EliteApi.Player.Status.Equals(Status.Fighting) &&
+                ChatCommands.ShouldHoldPulls(EliteApi)) return;
+
+            // Re-check the trust gate at action time. Within one FSM pass the
+            // player can auto-disengage (previous mob died) AFTER Check()
+            // evaluated the gate while status was still Fighting, so a due
+            // low-MP resummon was invisible to Check() but the engage
+            // condition below (!Fighting) had already become true.
+            if (new SummonTrustsState(Memory).Check())
+            {
+                Diagnostics.CombatDiag.Event("ENGAGE blocked: trusts pending");
+                return;
+            }
 
             // Has the user decided that we should approach targets?
-            if (context.Config.IsApproachEnabled)
+            if (Config.IsApproachEnabled)
             {
                 // Move to target if out of melee range. 
-                var path = context.NavMesh.FindPathBetween(context.API.Player.Position, context.Target.Position);
-                if (path.Count > 0)
+                EliteApi.Navigator.DistanceTolerance = Config.MeleeDistance;
+                EliteApi.Navigator.GotoNPC(Target.Id, Config.IsObjectAvoidanceEnabled);
+
+                // Engaged but still at or beyond melee tolerance well after
+                // the engage: the navigator considers us "arrived" while the
+                // game says our swings cannot reach (observed: engaged at
+                // 4.1y on a large-model worm, zero hits landed for six
+                // minutes while it cast us to death). Push in tighter.
+                if (EliteApi.Player.Status.Equals(Status.Fighting) &&
+                    Target != null && !Target.IsDead &&
+                    Target.Distance >= Config.MeleeDistance &&
+                    System.DateTime.Now > SummonTrustsState.LastEngageCommand.AddSeconds(10))
                 {
-                    if (path.Count > 1)
-                    {
-                        context.API.Navigator.DistanceTolerance = 0.5;
-                    }
-                    else
-                    {
-                        context.API.Navigator.DistanceTolerance = context.Config.MeleeDistance;
-                    }
-
-                    while (path.Count > 0 && path.Peek().Distance(context.API.Player.Position) <= context.API.Navigator.DistanceTolerance)
-                    {
-                        path.Dequeue();
-                    }
-                    
-                    if (path.Count > 0)
-                    {
-                        var node = path.Peek();
-
-                        float deltaX = node.X - context.API.Player.Position.X;
-                        float deltaY = node.Y - context.API.Player.Position.Y;
-                        float deltaZ = node.Z - context.API.Player.Position.Z;
-                        context.API.Follow.SetFollowCoords(deltaX, deltaY, deltaZ);
-                    }
-                    else
-                    {
-                        context.API.Navigator.FaceHeading(context.Target.Position);
-                        context.API.Follow.Reset();
-
-                        // Has the user decided we should engage in battle. 
-                        if (context.Config.IsEngageEnabled)
-                            if (!context.API.Player.Status.Equals(Status.Fighting) && context.Target.Distance < 25)
-                                context.API.Windower.SendString(Constants.AttackTarget);
-                    }
+                    EliteApi.Navigator.DistanceTolerance = 1.5;
+                    EliteApi.Navigator.GotoNPC(Target.Id, Config.IsObjectAvoidanceEnabled);
                 }
-            } 
-            else
-            {
-                // Face mob. 
-                context.API.Navigator.FaceHeading(context.Target.Position);
             }
+
+            // Face mob. 
+            EliteApi.Navigator.FaceHeading(Target.Position);
+
+            // Target mob if not currently targeted. 
+            Player.SetTarget(EliteApi, Target);
+
+            // Has the user decided we should engage in battle. 
+            if (Config.IsEngageEnabled)
+                if (!EliteApi.Player.Status.Equals(Status.Fighting) && Target.Distance < 25)
+                {
+                    // Engage confirmation takes ~0.5-4s server-side; don't
+                    // spam /attack every 350ms pass in the meantime.
+                    if (System.DateTime.Now < SummonTrustsState.LastEngageCommand.AddSeconds(2)) return;
+                    int trusts;
+                    try
+                    {
+                        trusts = EliteApi.PartyMember.Values
+                            .Where(x => x.UnitPresent)
+                            .Count(x => { try { return x.NpcType == NpcType.NPC; } catch { return false; } });
+                    }
+                    catch { trusts = -1; }
+                    Diagnostics.CombatDiag.Event(string.Format(
+                        "ENGAGE {0}[{1}] d:{2:F1} hp:{3}% trustsInParty:{4}",
+                        Target.Name, Target.Id, Target.Distance, Target.HppCurrent, trusts));
+                    SummonTrustsState.LastEngageCommand = System.DateTime.Now;
+                    EliteApi.Windower.SendString(Constants.AttackTarget);
+                }
         }
     }
 }

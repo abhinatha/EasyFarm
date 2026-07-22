@@ -8,8 +8,10 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
-        <Grid.ColumnDefinitions>    
+        <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
@@ -21,5 +23,15 @@
                 Minimum="1" Maximum="25" 
                 TickFrequency="1" IsSnapToTickEnabled="True" 
                 Margin="5" Value="{Binding Distance}" />
+        <Label Grid.Row="2" Grid.Column="0" Margin="5"
+               ToolTip="When a party member types this in chat, their name is placed in the Name field and the bot follows them.">Follow Phrase</Label>
+        <TextBox Grid.Row="2" Grid.Column="1" Margin="5"
+                 ToolTip="When a party member types this in chat, their name is placed in the Name field and the bot follows them."
+                 Text="{Binding FollowMePhrase, UpdateSourceTrigger=PropertyChanged}" />
+        <Label Grid.Row="3" Grid.Column="0" Margin="5"
+               ToolTip="When typed in chat, the Name field is cleared and following stops.">Stop Follow Phrase</Label>
+        <TextBox Grid.Row="3" Grid.Column="1" Margin="5"
+                 ToolTip="When typed in chat, the Name field is cleared and following stops."
+                 Text="{Binding StopFollowPhrase, UpdateSourceTrigger=PropertyChanged}" />
     </Grid>
 </UserControl>

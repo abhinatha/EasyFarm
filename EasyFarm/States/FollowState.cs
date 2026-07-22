@@ -1,12 +1,12 @@
 ﻿// ///////////////////////////////////////////////////////////////////
 // This file is a part of EasyFarm for Final Fantasy XI
-// Copyright (C) 2013 Mykezero
-//  
+// Copyright (C) 2013-2017 Mykezero
+// 
 // EasyFarm is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//  
+// 
 // EasyFarm is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -15,81 +15,60 @@
 // You should have received a copy of the GNU General Public License
 // If not, see <http://www.gnu.org/licenses/>.
 // ///////////////////////////////////////////////////////////////////
-using EasyFarm.Context;
+
+using EasyFarm.Classes;
+using EasyFarm.UserSettings;
 using MemoryAPI;
-using MemoryAPI.Navigation;
-using Player = EasyFarm.Classes.Player;
 
 namespace EasyFarm.States
 {
     /// <summary>
     ///     Moves to target enemies.
     /// </summary>
-    public class FollowState : BaseState
+    public class FollowState : AgentState
     {
-        public override void Enter(IGameContext context)
+        public FollowState(StateMemory memory) : base(memory)
         {
-            // Stand up from resting. 
-            if (context.Player.Status == Status.Healing) Player.Stand(context.API);
-
-            // Disengage an invalid target. 
-            if (context.Player.Status == Status.Fighting) Player.Disengage(context.API);
         }
 
-        public override bool Check(IGameContext context)
+        public override void Enter()
+        {
+            // Stand up from resting. 
+            if (EliteApi.Player.Status == Status.Healing) Player.Stand(EliteApi);
+
+            // Disengage an invalid target. 
+            if (EliteApi.Player.Status == Status.Fighting) Player.Disengage(EliteApi);
+        }
+
+        public override bool Check()
         {
             // Do not follow during fighting. 
-            if (context.IsFighting) return false;
+            if (IsFighting) return false;
 
             // Do not follow when resting. 
-            if (new RestState().Check(context)) return false;
+            if (new RestState(Memory).Check()) return false;
 
             // Avoid following empty units. 
-            if (string.IsNullOrWhiteSpace(context.Config.FollowedPlayer)) return false;
+            if (string.IsNullOrWhiteSpace(Config.FollowedPlayer)) return false;
 
             // Get the player specified in user settings. 
-            var player = context.Memory.UnitService.GetUnitByName(context.Config.FollowedPlayer);
+            var player = UnitService.GetUnitByName(Config.FollowedPlayer);
 
             // If no player is nearby, return. 
             if (player == null) return false;
 
             // If we're already close, no action needed. 
-            return player.Distance > context.Config.FollowDistance;
+            return player.Distance > Config.FollowDistance;
         }
 
-        public override void Run(IGameContext context)
+        public override void Run()
         {
             // Get the player specified in user settings. 
-            var player = context.Memory.UnitService.GetUnitByName(context.Config.FollowedPlayer);
+            var player = UnitService.GetUnitByName(Config.FollowedPlayer);
 
             // Follow the player. 
-            context.API.Navigator.DistanceTolerance = context.Config.FollowDistance;
-            var path = context.NavMesh.FindPathBetween(context.API.Player.Position, context.Target.Position);
-            if (path.Count > 0)
-            {
-                if (path.Count > 1)
-                {
-                    context.API.Navigator.DistanceTolerance = 0.5;
-                }
-                else
-                {
-                    context.API.Navigator.DistanceTolerance = context.Config.FollowDistance;
-                }
-
-                while (path.Count > 0 && path.Peek().Distance(context.API.Player.Position) <= 0.5)
-                {
-                    path.Dequeue();
-                }
-
-                if (path.Count > 0)
-                {
-                    context.API.Navigator.GotoWaypoint(path.Peek(), true);
-                }
-                else
-                {
-                    context.API.Navigator.Reset();
-                }
-            }
+            EliteApi.Navigator.DistanceTolerance = Config.FollowDistance;
+            EliteApi.Navigator.GotoNPC(player.Id, Config.IsObjectAvoidanceEnabled);
         }
     }
 }

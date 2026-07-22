@@ -1,12 +1,12 @@
 ﻿// ///////////////////////////////////////////////////////////////////
 // This file is a part of EasyFarm for Final Fantasy XI
-// Copyright (C) 2013 Mykezero
-//  
+// Copyright (C) 2013-2017 Mykezero
+// 
 // EasyFarm is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//  
+// 
 // EasyFarm is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -15,13 +15,13 @@
 // You should have received a copy of the GNU General Public License
 // If not, see <http://www.gnu.org/licenses/>.
 // ///////////////////////////////////////////////////////////////////
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using EasyFarm.Classes;
-using EasyFarm.Context;
 using EasyFarm.Logging;
 using EasyFarm.UserSettings;
 using EasyFarm.ViewModels;
@@ -34,32 +34,69 @@ namespace EasyFarm.States
         private readonly TypeCache<bool> _cache = new TypeCache<bool>();
         private readonly IMemoryAPI _fface;
         private readonly List<IState> _states = new List<IState>();
+        private readonly StateMemory _stateMemory;
         private CancellationTokenSource _cancellation = new CancellationTokenSource();
-        public readonly GameContext _context;
 
         public FiniteStateMachine(IMemoryAPI fface)
         {
             _fface = fface;
-            _context = new GameContext(fface);
+            var stateMemory = new StateMemory(fface);
+            _stateMemory = stateMemory;
+            Diagnostics.CombatDiag.Init(fface, stateMemory);
 
-            AddState(new DeadState() { Priority = 7 });
-            AddState(new ZoneState() { Priority = 7 });
-            AddState(new SetTargetState() { Priority = 0 });
-            AddState(new SetFightingState() { Priority = 7 });
-            AddState(new FollowState() { Priority = 5 });
-            AddState(new RestState() { Priority = 2 });
-            AddState(new SummonTrustsState() { Priority = 6 });
-            AddState(new ApproachState() { Priority = 0 });
-            AddState(new BattleState() { Priority = 3 });
-            AddState(new WeaponskillState() { Priority = 2 });
-            AddState(new PullState() { Priority = 4 });
-            AddState(new StartState() { Priority = 5 });
-            AddState(new TravelState() { Priority = 1 });
-            AddState(new HealingState() { Priority = 2 });
-            AddState(new EndState() { Priority = 3 });
-            AddState(new StartEngineState() { Priority = Constants.MaxPriority });
+            //Create the states
+            AddState(new DeadState(stateMemory) {Priority = 7});
+            AddState(new ZoneState(stateMemory) {Priority = 7});
+            AddState(new SetTargetState(stateMemory) {Priority = 7});
+            AddState(new SetFightingState(stateMemory) {Priority = 7});
+            AddState(new FollowState(stateMemory) {Priority = 5});
+            AddState(new RestState(stateMemory) {Priority = 2});
+            AddState(new SummonTrustsState(stateMemory) {Priority = 6});
+            AddState(new ApproachState(stateMemory) {Priority = 0});
+            AddState(new BattleState(stateMemory) {Priority = 3});
+            AddState(new WeaponskillState(stateMemory) {Priority = 2});
+            AddState(new PullState(stateMemory) {Priority = 4});
+            AddState(new StartState(stateMemory) {Priority = 5});
+            AddState(new TravelState(stateMemory) {Priority = 1});
+            AddState(new ReturnToCampState(stateMemory) {Priority = 1});
+            AddState(new HealingState(stateMemory) {Priority = 2});
+            AddState(new EndState(stateMemory) {Priority = 3});
+            AddState(new StartEngineState(stateMemory) {Priority = Constants.MaxPriority});
 
             _states.ForEach(x => x.Enabled = true);
+        }
+
+        /// <summary>
+        ///     Chat-commanded soft reset: exit every active state, drop the
+        ///     current target and all accumulated combat bookkeeping, and
+        ///     let the state machine re-evaluate from a clean slate.
+        /// </summary>
+        private void ResetLogic()
+        {
+            Diagnostics.CombatDiag.Event("CHAT reset logic - restarting combat logic");
+
+            try
+            {
+                if (_fface.Player.Status.Equals(Status.Fighting)) Player.Disengage(_fface);
+            }
+            catch { }
+
+            try { _fface.Navigator.Reset(); } catch { }
+
+            foreach (var state in _states)
+            {
+                if (!_cache[state]) continue;
+                try { state.Exit(); } catch { }
+                _cache[state] = false;
+            }
+
+            _stateMemory.Target = null;
+            _stateMemory.IsFighting = false;
+
+            TargetBlacklist.Clear();
+            SummonTrustsState.ResetTrackers();
+            EndState.ResetWatchdog();
+            ChatCommands.ClearHold();
         }
 
         private void AddState(IState component)
@@ -93,9 +130,24 @@ namespace EasyFarm.States
             {
                 using (_cancellation.Token.Register(StopThreadQuickly(Thread.CurrentThread)))
                 {
+                    RunStateMachineLabel:
                     try
                     {
                         RunStateMachine();
+                    }
+                    catch (System.InvalidOperationException ex)
+                    {
+                        // Ignore race conditions while rapidly parsing the chat log.
+                        if (ex.Message == "Collection was modified after the enumerator was instantiated.")
+                        {
+                            TimeWaiter.Pause(250);
+                            goto RunStateMachineLabel;
+                        } else
+                        {
+                            Logger.Log(new LogEntry(LoggingEventType.Error, "FSM error", ex));
+                            LogViewModel.Write("An error has occurred: please check easyfarm.log for more information");
+                            AppServices.InformUser("An error occurred!");
+                        }
                     }
                     catch (ThreadInterruptedException ex)
                     {
@@ -143,20 +195,25 @@ namespace EasyFarm.States
                 {
                     _cancellation.Token.ThrowIfCancellationRequested();
 
-                    var isRunnable = mc.Check(_context);
+                    var isRunnable = mc.Check();
 
                     // Run last state's exits method.
                     if (_cache[mc] != isRunnable)
                     {
-                        if (isRunnable) mc.Enter(_context);
-                        else mc.Exit(_context);
+                        Diagnostics.CombatDiag.Event("STATE " + (isRunnable ? "+" : "-") + mc.GetType().Name);
+                        if (isRunnable) mc.Enter();
+                        else mc.Exit();
                         _cache[mc] = isRunnable;
                     }
 
-                    if (isRunnable) mc.Run(_context);
+                    if (isRunnable) mc.Run();
                 }
 
-                TimeWaiter.Pause(100);
+                Classes.ChatCommands.Poll(_fface);
+                Classes.ChatCommands.ProcessInvite(_fface);
+                if (Classes.ChatCommands.ConsumeResetRequest()) ResetLogic();
+                Diagnostics.CombatDiag.Tick();
+                TimeWaiter.Pause(250);
             }
 
             // ReSharper disable once FunctionNeverReturns

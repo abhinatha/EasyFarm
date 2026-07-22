@@ -1,12 +1,12 @@
 ﻿// ///////////////////////////////////////////////////////////////////
 // This file is a part of EasyFarm for Final Fantasy XI
-// Copyright (C) 2013 Mykezero
-//  
+// Copyright (C) 2013-2017 Mykezero
+// 
 // EasyFarm is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//  
+// 
 // EasyFarm is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -15,6 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // If not, see <http://www.gnu.org/licenses/>.
 // ///////////////////////////////////////////////////////////////////
+
 using System;
 
 namespace EasyFarm.UserSettings
@@ -34,17 +35,17 @@ namespace EasyFarm.UserSettings
         /// <summary>
         /// Min distance to stand when attacking an opponent.
         /// </summary>
-        public const int MeleeDistance = 2;
+        public const int MeleeDistance = 3;
 
         /// <summary>
         /// Max difference an attackable mob can be before being considered unreachable.
         /// </summary>
-        public const int HeightThreshold = 100;
+        public const int HeightThreshold = 5;
 
         /// <summary>
         /// The max distance a mob will be recoginized by the bot.
         /// </summary>
-        public const double DetectionDistance = 100;
+        public const double DetectionDistance = 17;
 
         /// <summary>
         /// Command for resting

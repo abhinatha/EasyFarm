@@ -49,11 +49,6 @@
                          Content="Circular"
                          IsChecked="{Binding ElementName=StraightRoute, Path=IsChecked, Converter={StaticResource InverseBooleanConverter }}">
             </RadioButton>
-            <CheckBox x:Name="Debug"
-                      DockPanel.Dock="Left"
-                      Content="Debug Mode"
-                      IsChecked="{Binding DebugMode, FallbackValue=False}">
-            </CheckBox>
             <Button Command="{Binding ResetNavigatorCommand}"
                     DockPanel.Dock="Right"
                     Content="Reset Character"
@@ -71,7 +66,6 @@
                     Content="Save" />
             <Button Command="{Binding LoadCommand}"
                     Content="Load" />
-            <Button Content="Add Waypoint" Command="{Binding AddCommand}" />
         </StackPanel>
 
         <ListBox Grid.Row="0"

@@ -1,12 +1,12 @@
 ﻿// ///////////////////////////////////////////////////////////////////
 // This file is a part of EasyFarm for Final Fantasy XI
-// Copyright (C) 2013 Mykezero
-//  
+// Copyright (C) 2013-2017 Mykezero
+// 
 // EasyFarm is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//  
+// 
 // EasyFarm is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -43,6 +43,36 @@ namespace EasyFarm.ViewModels
         {
             get { return Config.Instance.IsApproachEnabled; }
             set { Set(ref Config.Instance.IsApproachEnabled, value); }
+        }
+
+        public string HoldPullPhrase
+        {
+            get { return Config.Instance.HoldPullPhrase; }
+            set { Set(ref Config.Instance.HoldPullPhrase, value); }
+        }
+
+        public string ResumePullPhrase
+        {
+            get { return Config.Instance.ResumePullPhrase; }
+            set { Set(ref Config.Instance.ResumePullPhrase, value); }
+        }
+
+        public int HoldPullMinutes
+        {
+            get { return Config.Instance.HoldPullMinutes; }
+            set { Set(ref Config.Instance.HoldPullMinutes, value); }
+        }
+
+        public string ResetLogicPhrase
+        {
+            get { return Config.Instance.ResetLogicPhrase; }
+            set { Set(ref Config.Instance.ResetLogicPhrase, value); }
+        }
+
+        public string InvitePartyPhrase
+        {
+            get { return Config.Instance.InvitePartyPhrase; }
+            set { Set(ref Config.Instance.InvitePartyPhrase, value); }
         }
 
         public double DetectionDistance
@@ -95,6 +125,16 @@ namespace EasyFarm.ViewModels
             }
         }
 
+        public int PullCooldown
+        {
+            get { return Config.Instance.PullCooldown; }
+            set
+            {
+                Set(ref Config.Instance.PullCooldown, value);
+                AppServices.InformUser("Pull Cooldown Set: {0} seconds.", value);
+            }
+        }
+
         public bool AvoidObjects
         {
             get { return Config.Instance.IsObjectAvoidanceEnabled; }
@@ -138,6 +178,7 @@ namespace EasyFarm.ViewModels
             MeleeDistance = Constants.MeleeDistance;
             WanderDistance = Constants.DetectionDistance;
             GlobalCooldown = Constants.GlobalSpellCooldown;
+            PullCooldown = 0;
             EnableTabTargeting = false;
             AvoidObjects = false;
             ShouldApproach = true;

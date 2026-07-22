@@ -1,12 +1,12 @@
 // ///////////////////////////////////////////////////////////////////
 // This file is a part of EasyFarm for Final Fantasy XI
-// Copyright (C) 2013 Mykezero
-//  
+// Copyright (C) 2013-2017 Mykezero
+// 
 // EasyFarm is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
-//  
+// 
 // EasyFarm is distributed in the hope that it will be useful,
 // but WITHOUT ANY WARRANTY; without even the implied warranty of
 // MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
@@ -15,6 +15,7 @@
 // You should have received a copy of the GNU General Public License
 // If not, see <http://www.gnu.org/licenses/>.
 // ///////////////////////////////////////////////////////////////////
+
 using EasyFarm.Classes;
 using EasyFarm.UserSettings;
 using MemoryAPI;
@@ -31,8 +32,8 @@ namespace EasyFarm.States
         ///     Provides information about game data.
         /// </summary>
         private readonly IMemoryAPI _fface;
+
         private readonly PlayerMonitor _playerMonitor;
-        private readonly ChatMonitor _chatMonitor;
 
         /// <summary>
         ///     The engine that controls player actions.
@@ -49,7 +50,6 @@ namespace EasyFarm.States
             _fface = fface;
             _stateMachine = new FiniteStateMachine(fface);
             _playerMonitor = new PlayerMonitor(fface);
-            //_chatMonitor = new ChatMonitor(fface);
         }
 
         /// <summary>
@@ -57,11 +57,19 @@ namespace EasyFarm.States
         /// </summary>
         public bool Start()
         {
-            IsWorking = true;
-            _stateMachine.Start();
-            _playerMonitor.Start();
-            //_chatMonitor.Watch();
-            return true;
+            var route = Config.Instance.Route;
+            var isPathReachable = !route.IsPathSet || route.IsPathUnreachable(_fface);
+
+            if (isPathReachable)
+            {
+                IsWorking = true;
+                _stateMachine.Start();
+                _playerMonitor.Start();
+                return true;
+            }
+
+            AppServices.InformUser("The route is not reachable");
+            return false;
         }
 
         /// <summary>
@@ -72,8 +80,6 @@ namespace EasyFarm.States
             IsWorking = false;
             _stateMachine.Stop();
             _playerMonitor.Stop();
-            //_chatMonitor.Stop();
-            _fface.Follow.Reset();
         }
     }
 }
