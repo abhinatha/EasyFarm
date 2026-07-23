@@ -72,14 +72,19 @@ namespace EasyFarm.States
         ///     already on our hate list is our problem no matter where it
         ///     stands, and filtering it out lets it kill the trusts while
         ///     the bot fights fresh mobs.
+        ///     Deliberately NOT gated on TargetBlacklist. A blacklist entry
+        ///     means "do not PULL this", never "do not DEFEND against this".
+        ///     Observed death: a stalemate-blacklisted mob kept hitting the
+        ///     player, the blacklist hid it from every target path, the bot
+        ///     stood at Tgt:none for 74s and died at full trust HP because
+        ///     disengaging also idles the trusts.
         /// </summary>
         protected bool TargetIsAttacker =>
             Target != null &&
             Target.IsActive &&
             !Target.IsDead &&
             Target.HasAggroed &&
-            Target.Distance < 30 &&
-            !Classes.TargetBlacklist.IsBlacklisted(Target.Id);
+            Target.Distance < 30;
 
         public Executor Executor
         {

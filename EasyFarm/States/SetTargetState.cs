@@ -60,10 +60,16 @@ namespace EasyFarm.States
             // distance and camp radius must not hide a mob that is already
             // hitting us (observed: attacker at 7.4y with DetectionDistance
             // 5 stayed invisible while killing the trusts).
+            // Blacklist is deliberately NOT consulted here. It exists to stop
+            // us PULLING a mob, not to stop us DEFENDING against one. A
+            // stalemate-blacklisted mob that keeps hitting us was invisible to
+            // this query, to TargetIsAttacker and to MobFilter at once - the
+            // bot sat at Tgt:none for 74s and died with five untouched trusts
+            // because disengaging idles them. Pull selection below still
+            // honours the blacklist, so we never go back for it voluntarily.
             var attacker = UnitService.MobArray
                 .Where(x => x.IsActive && !x.IsDead && x.HasAggroed)
                 .Where(x => x.Distance < 30)
-                .Where(x => !TargetBlacklist.IsBlacklisted(x.Id))
                 .OrderBy(x => x.Distance)
                 .FirstOrDefault();
 

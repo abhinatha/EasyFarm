@@ -87,6 +87,27 @@ namespace EasyFarm.States
                 return false;
             }
 
+            // Attacker exemption: never disengage from a mob that is hitting
+            // us, even if we are doing zero damage to it. Disengaging idles
+            // every trust - they only act while the player is engaged - so an
+            // unkillable attacker then beats the party down with nothing
+            // fighting back (observed: 63% to death in 74s with five trusts
+            // parked at 100%). Staying engaged keeps trusts swinging and
+            // healing, which is the survivable branch. The mob is still
+            // blacklisted for future PULLS by the normal selection path.
+            if (TargetIsAttacker)
+            {
+                if (!Classes.TargetBlacklist.IsBlacklisted(Target.Id))
+                {
+                    Diagnostics.CombatDiag.Event(string.Format(
+                        "STALEMATE-HELD {0}[{1}] hp:{2}% is attacking us - staying engaged, blacklisted {3}min for pulls",
+                        Target.Name, Target.Id, Target.HppCurrent, BlacklistMinutes));
+                    TargetBlacklist.Add(Target.Id, BlacklistMinutes);
+                }
+                _watchWasEngaged = false;
+                return false;
+            }
+
             if (!_watchWasEngaged ||
                 Target.Id != _watchTargetId ||
                 Target.HppCurrent > _watchTargetHpp)
