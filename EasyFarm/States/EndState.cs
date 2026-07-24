@@ -53,6 +53,7 @@ namespace EasyFarm.States
         private static short _watchTargetHpp;
         private static DateTime _watchLastProgress;
         private static bool _watchWasEngaged;
+        private static int _stalemateHeldId;
 
         private static int _feTargetId;
         private static short _feTargetHpp;
@@ -65,6 +66,7 @@ namespace EasyFarm.States
             _watchTargetHpp = 0;
             _watchLastProgress = DateTime.MinValue;
             _watchWasEngaged = false;
+            _stalemateHeldId = 0;
 
             _feTargetId = 0;
             _feTargetHpp = 0;
@@ -88,21 +90,25 @@ namespace EasyFarm.States
             }
 
             // Attacker exemption: never disengage from a mob that is hitting
-            // us, even if we are doing zero damage to it. Disengaging idles
-            // every trust - they only act while the player is engaged - so an
-            // unkillable attacker then beats the party down with nothing
-            // fighting back (observed: 63% to death in 74s with five trusts
-            // parked at 100%). Staying engaged keeps trusts swinging and
-            // healing, which is the survivable branch. The mob is still
-            // blacklisted for future PULLS by the normal selection path.
+            // us, and never blacklist it. It is the target in front of us, not
+            // a pull candidate. Blacklisting the mob we are actively fighting
+            // makes BattleState/WeaponskillState filter it out (their action
+            // selection runs through MobFilter, which honours the blacklist),
+            // so the bot drops WS/JA/spells and grinds it with bare auto-
+            // attack only - which whiffs on high-evasion Escha birds. Observed
+            // death: held mob frozen at ~71% for 4 min, rotation silent, player
+            // beaten from full to 0 while five trusts sat at 100%. Blacklist is
+            // for PULLS, never for the current engaged mob. Escaping a fight we
+            // are LOSING is the survival state's job (low player HP), not this
+            // watchdog's - walking away mid-fight just idles the trusts.
             if (TargetIsAttacker)
             {
-                if (!Classes.TargetBlacklist.IsBlacklisted(Target.Id))
+                if (_stalemateHeldId != Target.Id)
                 {
+                    _stalemateHeldId = Target.Id;
                     Diagnostics.CombatDiag.Event(string.Format(
-                        "STALEMATE-HELD {0}[{1}] hp:{2}% is attacking us - staying engaged, blacklisted {3}min for pulls",
-                        Target.Name, Target.Id, Target.HppCurrent, BlacklistMinutes));
-                    TargetBlacklist.Add(Target.Id, BlacklistMinutes);
+                        "STALEMATE-HELD {0}[{1}] hp:{2}% attacking us - staying engaged, full rotation kept",
+                        Target.Name, Target.Id, Target.HppCurrent));
                 }
                 _watchWasEngaged = false;
                 return false;
