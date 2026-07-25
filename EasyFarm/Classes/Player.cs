@@ -119,11 +119,42 @@ namespace EasyFarm.Classes
 
         private static void SetTargetUsingMemory(IMemoryAPI fface, IUnit target)
         {
-            if (target.Id != fface.Target.ID)
+            if (target.Id == fface.Target.ID) return;
+
+            // SetNPCTarget writes the target slot and SetTargetCursor commits
+            // it, but neither is synchronous - the client needs a frame or two
+            // to move the cursor. The old code fired both and returned
+            // immediately, so the "/attack <t>" that follows in the SAME
+            // ApproachState pass resolved against the PREVIOUS cursor target.
+            // Observed: ENGAGE issued on [294] right after [293] died, client
+            // committed to [296] five seconds later and spent the fight on an
+            // unclaimed mob. Confirm the cursor actually moved, and re-issue
+            // while waiting. Note SetTargetByTabbing below already verified;
+            // this path was the one that did not.
+            Stopwatch stopwatch = new Stopwatch();
+            stopwatch.Start();
+
+            while (target.Id != fface.Target.ID)
             {
+                if (stopwatch.Elapsed >= TimeSpan.FromMilliseconds(600)) return;
+
                 fface.Target.SetNPCTarget(target.Id);
                 fface.Windower.SendString(Constants.SetTargetCursor);
+                TimeWaiter.Pause(100);
             }
+        }
+
+        /// <summary>
+        ///     True when the client's target cursor is actually on the unit we
+        ///     think we are acting against. Callers that send target-relative
+        ///     commands ("/attack &lt;t&gt;", weaponskills, pull moves) must gate on
+        ///     this: those commands bind to the CLIENT cursor, not to our
+        ///     IUnit reference, so an uncommitted cursor silently redirects
+        ///     them to a different mob.
+        /// </summary>
+        public static bool IsTargeting(IMemoryAPI fface, IUnit target)
+        {
+            return target != null && fface.Target.ID == target.Id;
         }
     }
 }
