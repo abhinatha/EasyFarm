@@ -49,11 +49,19 @@ namespace EasyFarm.States
         private const int FailedEngageSeconds = 20;
         private const int FailedEngageSkipMinutes = 3;
 
+        // Engage recycle: Player.Status stays Fighting while the client's
+        // engage target is a DIFFERENT entity than the mob actually on us, so
+        // no swing ever lands and no watchdog fires. Bounce the stance after
+        // this long without damaging the mob attacking us.
+        private const int EngageRecycleSeconds = 30;
+
         private static int _watchTargetId;
         private static short _watchTargetHpp;
         private static DateTime _watchLastProgress;
         private static bool _watchWasEngaged;
         private static int _stalemateHeldId;
+        private static short _heldHpp;
+        private static DateTime _heldLastProgress;
 
         private static int _feTargetId;
         private static short _feTargetHpp;
@@ -67,6 +75,8 @@ namespace EasyFarm.States
             _watchLastProgress = DateTime.MinValue;
             _watchWasEngaged = false;
             _stalemateHeldId = 0;
+            _heldHpp = 0;
+            _heldLastProgress = DateTime.MinValue;
 
             _feTargetId = 0;
             _feTargetHpp = 0;
@@ -106,10 +116,41 @@ namespace EasyFarm.States
                 if (_stalemateHeldId != Target.Id)
                 {
                     _stalemateHeldId = Target.Id;
+                    _heldHpp = Target.HppCurrent;
+                    _heldLastProgress = DateTime.Now;
                     Diagnostics.CombatDiag.Event(string.Format(
                         "STALEMATE-HELD {0}[{1}] hp:{2}% attacking us - staying engaged, full rotation kept",
                         Target.Name, Target.Id, Target.HppCurrent));
                 }
+                else if (Target.HppCurrent < _heldHpp)
+                {
+                    // Damage is landing - the engage is genuinely on this mob.
+                    _heldHpp = Target.HppCurrent;
+                    _heldLastProgress = DateTime.Now;
+                }
+                else if (DateTime.Now > _heldLastProgress.AddSeconds(EngageRecycleSeconds))
+                {
+                    // Mis-engage recovery. Player.Status is Fighting and this
+                    // mob is beating on us, but it has taken no damage for
+                    // EngageRecycleSeconds. That means the client's engage
+                    // target is a DIFFERENT entity - the cursor raced at
+                    // engage time and we locked onto the mob we originally
+                    // issued /attack for, now far out of melee range. Every
+                    // auto-attack swings at nothing while Status stays
+                    // Fighting, so no watchdog sees it (observed: engaged on
+                    // [294] at d:16.1 while [296] at d:2.0 killed us; TP only
+                    // ever moved in +34 increments from hits TAKEN, never from
+                    // swings). Drop the stance; ApproachState re-engages next
+                    // pass with a cursor-verified /attack. Weaponskills still
+                    // landed throughout because Executor sets the cursor per
+                    // action - only auto-attack was bound to the stale target.
+                    _heldLastProgress = DateTime.Now;
+                    Diagnostics.CombatDiag.Event(string.Format(
+                        "ENGAGE-RECYCLE {0}[{1}] hp:{2}% d:{3:F1} no damage in {4}s while it attacks us - dropping stance to re-engage",
+                        Target.Name, Target.Id, Target.HppCurrent, Target.Distance, EngageRecycleSeconds));
+                    EliteApi.Windower.SendString(Constants.AttackOff);
+                }
+
                 _watchWasEngaged = false;
                 return false;
             }
