@@ -112,6 +112,22 @@ namespace EasyFarm.States
                     // Engage confirmation takes ~0.5-4s server-side; don't
                     // spam /attack every 350ms pass in the meantime.
                     if (System.DateTime.Now < SummonTrustsState.LastEngageCommand.AddSeconds(2)) return;
+
+                    // Constants.AttackTarget is "/attack <t>" - it binds to
+                    // the CLIENT's target cursor, not to our Target object.
+                    // If the cursor has not committed yet (it lags the memory
+                    // write by a frame or two, and tab-targeting gives up
+                    // after 1s without confirming) we engage whatever it was
+                    // pointing at before - typically the mob that just died.
+                    // Verify, then engage; a deferral just retries next pass.
+                    if (!Player.IsTargeting(EliteApi, Target))
+                    {
+                        Diagnostics.CombatDiag.Event(string.Format(
+                            "ENGAGE deferred: cursor on [{0}] but want {1}[{2}] d:{3:F1}",
+                            EliteApi.Target.ID, Target.Name, Target.Id, Target.Distance));
+                        return;
+                    }
+
                     int trusts;
                     try
                     {
@@ -121,8 +137,8 @@ namespace EasyFarm.States
                     }
                     catch { trusts = -1; }
                     Diagnostics.CombatDiag.Event(string.Format(
-                        "ENGAGE {0}[{1}] d:{2:F1} hp:{3}% trustsInParty:{4}",
-                        Target.Name, Target.Id, Target.Distance, Target.HppCurrent, trusts));
+                        "ENGAGE {0}[{1}] cursor:[{2}] d:{3:F1} hp:{4}% trustsInParty:{5}",
+                        Target.Name, Target.Id, EliteApi.Target.ID, Target.Distance, Target.HppCurrent, trusts));
                     SummonTrustsState.LastEngageCommand = System.DateTime.Now;
                     EliteApi.Windower.SendString(Constants.AttackTarget);
                 }
