@@ -62,6 +62,8 @@ namespace EasyFarm.States
         private static int _stalemateHeldId;
         private static short _heldHpp;
         private static DateTime _heldLastProgress;
+        private static DateTime _strandedDisengageAt;
+        private static bool _strandedLogged;
 
         private static int _feTargetId;
         private static short _feTargetHpp;
@@ -77,6 +79,8 @@ namespace EasyFarm.States
             _stalemateHeldId = 0;
             _heldHpp = 0;
             _heldLastProgress = DateTime.MinValue;
+            _strandedDisengageAt = DateTime.MinValue;
+            _strandedLogged = false;
 
             _feTargetId = 0;
             _feTargetHpp = 0;
@@ -279,6 +283,36 @@ namespace EasyFarm.States
 
         public override void Run()
         {
+            // Stranded-engage recovery. Enter() only disengages if the client
+            // was ALREADY Fighting the moment we transitioned in. An /attack
+            // sent a fraction of a second earlier is still in flight and lands
+            // several seconds later - after Enter() has run - leaving the
+            // player engaged with Target == null. Enter() never fires again
+            // while this state stays active, so nothing breaks the stance.
+            // Observed: ENGAGE [295] at 15:17:07.9, EndState entered 15:17:08.3
+            // while still Standing (disengage loop was a no-op), engage landed
+            // 15:17:13 -> Fighting with Tgt:none, stuck 12 minutes with zero
+            // state transitions. Re-check every pass instead.
+            if (EliteApi.Player.Status.Equals(Status.Fighting) &&
+                !IsEngagedWithLiveTarget && !TargetIsAttacker)
+            {
+                if (DateTime.Now > _strandedDisengageAt.AddSeconds(2))
+                {
+                    _strandedDisengageAt = DateTime.Now;
+                    if (!_strandedLogged)
+                    {
+                        _strandedLogged = true;
+                        Diagnostics.CombatDiag.Event(
+                            "STRANDED-ENGAGE: Fighting with no valid target - disengaging");
+                    }
+                    Player.Disengage(EliteApi);
+                }
+            }
+            else
+            {
+                _strandedLogged = false;
+            }
+
             // Execute moves.
             var usable = Config.BattleLists["End"].Actions
                 .Where(x => ActionFilters.BuffingFilter(EliteApi, x));

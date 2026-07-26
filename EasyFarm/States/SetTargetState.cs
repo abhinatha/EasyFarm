@@ -47,7 +47,14 @@ namespace EasyFarm.States
             if (ChatCommands.ShouldHoldPulls(EliteApi)) return false;
 
             // Track combat presence for the pull cooldown anchor.
-            if (EliteApi.Player.Status.Equals(Status.Fighting))
+            // Requires an actual target, not just Status.Fighting. A stranded
+            // engage (client stuck Fighting with Target == null) otherwise
+            // refreshes this anchor on every pass, so the pull cooldown below
+            // never expires, no new target is ever acquired, and nothing
+            // clears the stance - a permanent deadlock (observed: Fighting
+            // with Tgt:none for 12 minutes, zero state transitions).
+            if (EliteApi.Player.Status.Equals(Status.Fighting) &&
+                Target != null && !Target.IsDead)
                 _lastCombat = DateTime.Now;
 
             // Aggro override: if a valid mob is already fighting us and our
