@@ -55,6 +55,11 @@ namespace EasyFarm.States
         // this long without damaging the mob attacking us.
         private const int EngageRecycleSeconds = 30;
 
+        // Claimless-fight watchdog: engaged on a mob we do not hold claim on.
+        // UnitFilters lets party-claimed mobs through when PartyFilter is on,
+        // which is correct for assisting - but only while the assist is free.
+        private const int ClaimlessSeconds = 20;
+
         private static int _watchTargetId;
         private static short _watchTargetHpp;
         private static DateTime _watchLastProgress;
@@ -64,6 +69,10 @@ namespace EasyFarm.States
         private static DateTime _heldLastProgress;
         private static DateTime _strandedDisengageAt;
         private static bool _strandedLogged;
+
+        private static int _claimlessTargetId;
+        private static DateTime _claimlessSince;
+        private static int _claimlessStartHpp;
 
         private static int _feTargetId;
         private static short _feTargetHpp;
@@ -81,6 +90,10 @@ namespace EasyFarm.States
             _heldLastProgress = DateTime.MinValue;
             _strandedDisengageAt = DateTime.MinValue;
             _strandedLogged = false;
+
+            _claimlessTargetId = 0;
+            _claimlessSince = DateTime.MinValue;
+            _claimlessStartHpp = 0;
 
             _feTargetId = 0;
             _feTargetHpp = 0;
@@ -245,6 +258,72 @@ namespace EasyFarm.States
             return true;
         }
 
+        private bool FightIsClaimless()
+        {
+            // We are engaged on a mob whose claim belongs to someone else.
+            // UnitFilters lets these through when PartyFilter is on, which is
+            // correct - assisting a party member is intended behaviour. The
+            // failure is staying on it while it costs us health.
+            //
+            // Nothing else catches this. The stalemate and engage-recycle
+            // watchdogs both treat falling target HP as proof the fight is
+            // going well, but on someone else's claim that HP is coming off
+            // from THEIR damage, not ours. So they stay satisfied while we eat
+            // the melee with no claim, no hate management and no trust support.
+            // Observed death: 3m33s parked on a party member's claim, player
+            // 75% -> 0% while the target only went 45% -> 36% (all of it the
+            // claim owner's damage), and not one state transition in between.
+            //
+            // Attackers are exempt, as everywhere else in this file: never walk
+            // away from a mob that is hitting us. In the observed death the mob
+            // had already dropped hate (AggroUs:none) while still killing us,
+            // so the exemption does not blunt the check - and it prevents a
+            // disengage/aggro-override/re-engage loop on a genuine attacker.
+            if (Target == null || !Target.IsActive || Target.IsDead ||
+                TargetIsAttacker || Target.MyClaim ||
+                !EliteApi.Player.Status.Equals(Status.Fighting))
+            {
+                _claimlessTargetId = 0;
+                _claimlessSince = DateTime.MinValue;
+                return false;
+            }
+
+            if (Target.Id != _claimlessTargetId || _claimlessSince == DateTime.MinValue)
+            {
+                _claimlessTargetId = Target.Id;
+                _claimlessSince = DateTime.Now;
+                _claimlessStartHpp = EliteApi.Player.HPPCurrent;
+                return false;
+            }
+
+            if (DateTime.Now < _claimlessSince.AddSeconds(ClaimlessSeconds)) return false;
+
+            if (EliteApi.Player.HPPCurrent >= _claimlessStartHpp)
+            {
+                // Free assist: we are helping and paying nothing for it. Keep
+                // going, but re-baseline so a later HP slide still trips within
+                // ClaimlessSeconds rather than being measured against a stale
+                // high-water mark.
+                _claimlessSince = DateTime.Now;
+                _claimlessStartHpp = EliteApi.Player.HPPCurrent;
+                return false;
+            }
+
+            Diagnostics.CombatDiag.Event(string.Format(
+                "CLAIMLESS {0}[{1}] hp:{2}% claim:{3} not ours - our HP {4}%->{5}% over {6}s, disengaging",
+                Target.Name, Target.Id, Target.HppCurrent, Target.ClaimedId,
+                _claimlessStartHpp, EliteApi.Player.HPPCurrent, ClaimlessSeconds));
+            // Soft skip so pull selection rotates onto a mob we can actually
+            // claim; the aggro override still ignores this list, so if it turns
+            // on us afterwards we fight it properly.
+            FailedEngageSkip.Add(Target.Id, FailedEngageSkipMinutes);
+            IsFighting = false;
+            Target = null;
+            _claimlessTargetId = 0;
+            _claimlessSince = DateTime.MinValue;
+            return true;
+        }
+
         public override bool Check()
         {
             // Prevent making the player stand up from resting.
@@ -256,6 +335,9 @@ namespace EasyFarm.States
             // Combat intent that never lands a hit: chasing a mob we can't
             // engage. Drop it before it eats the whole session.
             if (EngageIsFailing()) return true;
+
+            // Bleeding out on another player's claim.
+            if (FightIsClaimless()) return true;
 
             // Never end the fight while engaged with a live target: transient
             // MobFilter failures (distance / waypoint / claim flicker) would
