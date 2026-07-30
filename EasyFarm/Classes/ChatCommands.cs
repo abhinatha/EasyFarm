@@ -49,6 +49,12 @@ namespace EasyFarm.Classes
         private static string _inviteName;
         private static DateTime _inviteStamp;
         private static DateTime _lastZoneReject = DateTime.MinValue;
+        private static DateTime _inviteEnmityLogged = DateTime.MinValue;
+
+        // Stage 1 will not release trusts while anything still holds enmity
+        // on us. Capped so a mob we can never shake cannot strand the invite
+        // forever.
+        private const int InviteCombatWaitSeconds = 120;
 
         /// <summary>
         ///     Whitelist gate. The bot's own character is always allowed.
@@ -292,6 +298,7 @@ namespace EasyFarm.Classes
             _holdTimerStart = null;
             _inviteStage = 0;
             _inviteName = null;
+            _inviteEnmityLogged = DateTime.MinValue;
         }
 
         /// <summary>
@@ -340,6 +347,34 @@ namespace EasyFarm.Classes
         }
 
         /// <summary>
+        ///     Approximates "something still has enmity on us", using the same
+        ///     rule SummonTrustsState gates trust summons on: any live mob in
+        ///     a fighting state that is our claim, party-claimed and nearby, or
+        ///     unclaimed and close. Kept deliberately identical - if release
+        ///     and resummon used different rules, the invite could dismiss the
+        ///     trusts into a fight the trust gate then refuses to resummon them
+        ///     out of, which is exactly the deadlock this fixes.
+        /// </summary>
+        private static IUnit EnmityBlocker()
+        {
+            try
+            {
+                if (UnitService.Units == null) return null;
+                return UnitService.Units
+                    .Where(x => x.NpcType.Equals(NpcType.Mob))
+                    .FirstOrDefault(x =>
+                        !x.IsDead && x.Status.Equals(Status.Fighting) &&
+                        (x.MyClaim ||
+                         x.PartyClaim && x.Distance < 30 ||
+                         !x.IsClaimed && x.Distance < 12));
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
         ///     Drives the invite sequence. Called once per FSM pass:
         ///     combat ends -> /retr all -> short pause -> /pcmd add name ->
         ///     wait for the player to join (or time out) -> normal logic
@@ -355,6 +390,42 @@ namespace EasyFarm.Classes
                 {
                     case 1: // Waiting for the current fight to finish.
                         if (!fface.Player.Status.Equals(Status.Standing)) return;
+
+                        // Status.Standing alone is NOT "the fight is over" - it
+                        // only means we are not currently engaged. Any
+                        // disengage (EndState, or the engage-recycle watchdog)
+                        // flips us to Standing while the mob is still alive, at
+                        // melee range, and holding enmity on the party.
+                        // Releasing trusts there strips every healer and DD
+                        // mid-fight, and the bot then can neither win nor
+                        // resummon - because SummonTrustsState gates on that
+                        // same enmity. Observed: /retr all went out 1.5s after
+                        // an ENGAGE-RECYCLE while an Apex Eft sat at d:1.8 on
+                        // our own claim; the bot soloed it for 2m18s at
+                        // trustsInParty:0, burning four more recycles before
+                        // trusts finally came back. Use the identical enmity
+                        // approximation so release and resummon agree.
+                        var blocker = EnmityBlocker();
+                        if (blocker != null)
+                        {
+                            if (DateTime.Now < _inviteStamp.AddSeconds(InviteCombatWaitSeconds))
+                            {
+                                if (DateTime.Now > _inviteEnmityLogged.AddSeconds(15))
+                                {
+                                    _inviteEnmityLogged = DateTime.Now;
+                                    Diagnostics.CombatDiag.Event(string.Format(
+                                        "INVITE waiting to release trusts - enmity {0}[{1}] d:{2:F1} party:{3} mine:{4}",
+                                        blocker.Name, blocker.Id, blocker.Distance,
+                                        blocker.PartyClaim, blocker.MyClaim));
+                                }
+                                return;
+                            }
+
+                            Diagnostics.CombatDiag.Event(string.Format(
+                                "INVITE enmity {0}[{1}] still up after {2}s - releasing trusts anyway",
+                                blocker.Name, blocker.Id, InviteCombatWaitSeconds));
+                        }
+
                         Diagnostics.CombatDiag.Event("INVITE releasing all trusts (/retr all)");
                         fface.Windower.SendString("/retr all");
                         _inviteStage = 2;
@@ -402,6 +473,18 @@ namespace EasyFarm.Classes
         /// </summary>
         public static bool ShouldHoldPulls(IMemoryAPI fface)
         {
+            // An invite in flight always holds pulls, independent of the hold
+            // countdown. The two timers are unsynchronised: the hold countdown
+            // starts when combat ends, while the invite's 60s accept window
+            // starts ~3s later when /pcmd goes out - so the hold expires first
+            // and the bot resumes pulling with the party slot still open and
+            // trustsInParty:0. Observed: hold expired 16:03:58, bot engaged at
+            // 16:04:00 with zero trusts, and the invite did not time out until
+            // 16:04:08. Returning early here also defers the countdown until
+            // the invite resolves, which leaves a clean window for the trust
+            // resummon once the invited player is actually in the party.
+            if (_inviteStage > 0) return true;
+
             if (!_holdRequested) return false;
 
             if (fface.Player.Status.Equals(Status.Fighting))
