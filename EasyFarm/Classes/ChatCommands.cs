@@ -56,6 +56,11 @@ namespace EasyFarm.Classes
         // forever.
         private const int InviteCombatWaitSeconds = 120;
 
+        // Stage 2 waits for /retr all to actually free a party slot before
+        // sending /pcmd add. Capped so a stuck slot cannot hang the sequence.
+        private const int InvitePartyDrainSeconds = 15;
+        private static DateTime _invitePartyLogged = DateTime.MinValue;
+
         /// <summary>
         ///     Whitelist gate. The bot's own character is always allowed.
         ///     An empty whitelist allows everyone; once it has entries,
@@ -173,8 +178,29 @@ namespace EasyFarm.Classes
                         }
                         else if (_inviteStage > 0)
                         {
-                            Diagnostics.CombatDiag.Event("CHAT invite request from " + speaker +
-                                " ignored - invite sequence already in progress");
+                            // The same player asking again while we are already
+                            // waiting on their accept almost always means the
+                            // invite never reached them - a /pcmd add rejected
+                            // server-side produces no popup and no error the
+                            // bot can observe. Re-send instead of discarding,
+                            // so a silently dropped invite is recoverable
+                            // without a logic reset. Observed: invite sent into
+                            // a full party, then two further requests ignored
+                            // while the sequence waited out its 60s window.
+                            if (_inviteStage == 3 &&
+                                string.Equals(speaker, _inviteName, StringComparison.OrdinalIgnoreCase) &&
+                                !PartyIsFull(fface))
+                            {
+                                Diagnostics.CombatDiag.Event("CHAT '" + InvitePhrase + "' from " + speaker +
+                                    " again - re-sending /pcmd add " + _inviteName);
+                                fface.Windower.SendString("/pcmd add " + _inviteName);
+                                _inviteStamp = DateTime.Now;
+                            }
+                            else
+                            {
+                                Diagnostics.CombatDiag.Event("CHAT invite request from " + speaker +
+                                    " ignored - invite sequence already in progress");
+                            }
                         }
                         else if (!PlayerInZone(fface, speaker))
                         {
@@ -299,6 +325,7 @@ namespace EasyFarm.Classes
             _inviteStage = 0;
             _inviteName = null;
             _inviteEnmityLogged = DateTime.MinValue;
+            _invitePartyLogged = DateTime.MinValue;
         }
 
         /// <summary>
@@ -330,6 +357,24 @@ namespace EasyFarm.Classes
             }
             catch { }
             return false;
+        }
+
+        /// <summary>
+        ///     True when every party slot is occupied. FFXI rejects
+        ///     "/pcmd add" on a full party, and does so silently as far as the
+        ///     bot can tell, so the invite sequence must confirm a slot is
+        ///     genuinely free before issuing the command.
+        /// </summary>
+        private static bool PartyIsFull(IMemoryAPI fface)
+        {
+            try
+            {
+                return fface.PartyMember.Values.Count(x => x.UnitPresent) >= 6;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private static bool InvitedPlayerInParty(IMemoryAPI fface)
@@ -432,8 +477,46 @@ namespace EasyFarm.Classes
                         _inviteStamp = DateTime.Now;
                         return;
 
-                    case 2: // Give the release a moment, then invite.
-                        if (DateTime.Now < _inviteStamp.AddSeconds(3)) return;
+                    case 2: // Wait for a slot to actually free, then invite.
+                        // A fixed delay is not enough. /retr all is
+                        // asynchronous - the trusts do not leave the party for
+                        // ~3-4s - and FFXI rejects "/pcmd add" outright while
+                        // all six slots are still occupied. The rejection is
+                        // silent from the bot's side: no popup for the
+                        // invitee, no error we can read, and the sequence then
+                        // sits in stage 3 burning the whole 60s accept window
+                        // on a command the server already threw away.
+                        // Observed: party still 6/6 at 20:36:18.161, /pcmd add
+                        // sent at 20:36:18.500, trusts finally left at
+                        // 20:36:19.175 - 0.7s too late. The invitee saw
+                        // nothing and re-requested twice.
+                        if (DateTime.Now < _inviteStamp.AddSeconds(1)) return;
+
+                        if (PartyIsFull(fface))
+                        {
+                            if (DateTime.Now < _inviteStamp.AddSeconds(InvitePartyDrainSeconds))
+                            {
+                                if (DateTime.Now > _invitePartyLogged.AddSeconds(5))
+                                {
+                                    _invitePartyLogged = DateTime.Now;
+                                    Diagnostics.CombatDiag.Event(
+                                        "INVITE waiting for a free party slot after /retr all");
+                                }
+                                return;
+                            }
+
+                            // Slots never freed. Fail loudly instead of firing
+                            // a command the server will reject and then waiting
+                            // 60s on an accept that can never come.
+                            Diagnostics.CombatDiag.Event(
+                                "INVITE party still full after " + InvitePartyDrainSeconds +
+                                "s - aborting invite for " + _inviteName);
+                            AppServices.InformUser("Invite to {0} aborted - party full.", _inviteName);
+                            _inviteStage = 0;
+                            _inviteName = null;
+                            return;
+                        }
+
                         Diagnostics.CombatDiag.Event("INVITE sending /pcmd add " + _inviteName);
                         fface.Windower.SendString("/pcmd add " + _inviteName);
                         _inviteStage = 3;
