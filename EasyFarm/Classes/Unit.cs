@@ -24,6 +24,14 @@ namespace EasyFarm.Classes
 {
     public class Unit : IUnit
     {
+        /// <summary>
+        ///     Number of slots belonging to our own party. The PartyMember
+        ///     dictionary is 16 entries wide because it also covers the two
+        ///     other alliance parties (slots 6-15); claim ownership checks
+        ///     must not reach into those.
+        /// </summary>
+        private const byte PartySlots = 6;
+
         public Unit(IMemoryAPI fface, int id)
         {
             // Set this unit's session data. 
@@ -188,19 +196,44 @@ namespace EasyFarm.Classes
         }
 
         /// <summary>
-        ///     If a party or alliance member has claim on the unit.
+        ///     If a member of our own party has claim on the unit. Alliance
+        ///     members are deliberately excluded.
         /// </summary>
         public bool PartyClaim
         {
             get
             {
-                for (byte i = 0; i < _fface.PartyMember.Count; i++)
+                var claimed = ClaimedId;
+                if (claimed == 0) return false;
+
+                // Only the six real party slots, and only slots that are
+                // actually occupied.
+                //
+                // Two defects lived here. The dictionary holds SIXTEEN
+                // entries - 0-5 are our party, 6-15 are the other alliance
+                // parties - so looping to PartyMember.Count treated every
+                // alliance member's claim as a party claim. Worse, there was
+                // no UnitPresent check: EliteAPI reads the raw party struct
+                // and FFXI does not zero a slot when someone leaves, so
+                // ServerID keeps returning the departed player's id
+                // indefinitely. Any mob claimed by that person - long gone
+                // from the party - still reported PartyClaim true.
+                //
+                // Consequences: UnitFilters lets those mobs through the
+                // PartyFilter pull check, so the bot steals strangers' mobs;
+                // and the SummonTrustsState enmity gate treats their fights
+                // as ours and refuses to summon trusts. Every other
+                // PartyMember consumer in the codebase already filters on
+                // UnitPresent - this was the one that did not.
+                for (byte i = 0; i < PartySlots; i++)
                 {
-                    if (_fface.PartyMember[i].ServerID != 0 && ClaimedId == _fface.PartyMember[i].ServerID)
-                    {
-                        return true;
-                    }
+                    IPartyMemberTools member;
+                    if (!_fface.PartyMember.TryGetValue(i, out member)) continue;
+                    if (member == null || !member.UnitPresent) continue;
+                    if (member.ServerID == 0) continue;
+                    if (member.ServerID == claimed) return true;
                 }
+
                 return false;
             }
         }
