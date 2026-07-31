@@ -32,6 +32,14 @@ namespace EasyFarm.Classes
         /// </summary>
         private const byte PartySlots = 6;
 
+        /// <summary>
+        ///     How close an unclaimed mob in combat must be before we treat it
+        ///     as having aggroed us. FFXI aggro and link ranges sit well inside
+        ///     this, and anything genuinely on us closes to melee rather than
+        ///     staying in combat at range.
+        /// </summary>
+        private const double AggroDistance = 20;
+
         public Unit(IMemoryAPI fface, int id)
         {
             // Set this unit's session data. 
@@ -184,7 +192,36 @@ namespace EasyFarm.Classes
 
         public bool HasAggroed
         {
-            get { return (!IsClaimed || MyClaim) && Status == Status.Fighting; }
+            get
+            {
+                if (Status != Status.Fighting) return false;
+
+                // Our own claim is unambiguous.
+                if (MyClaim) return true;
+
+                // Anyone else's claim is their fight, not ours. Deliberately
+                // includes party members' claims: treating those as aggro on
+                // us would make TargetIsAttacker true for them, which in turn
+                // exempts them from the claimless-fight watchdog - the exact
+                // situation that watchdog exists to catch.
+                if (IsClaimed) return false;
+
+                // Unclaimed and in combat. This branch used to return true
+                // unconditionally, with no reference to distance or to who the
+                // mob was actually hitting. A stranger's mob whose claim
+                // lapsed between server ticks - already worked down to 16% -
+                // therefore read as an attacker from 29.7 yalms away, and the
+                // aggro override in SetTargetState bypasses MobFilter by
+                // design, so that one false positive was enough to send the
+                // bot across the zone to steal it on the first pass after
+                // startup.
+                //
+                // TargetingIndex would settle this exactly, but EliteAPI never
+                // populates it - it read 0 in all 57,797 samples across every
+                // diag log to date - so fall back to proximity, which is the
+                // only signal actually available here.
+                return Distance < AggroDistance;
+            }
         }
 
         /// <summary>
