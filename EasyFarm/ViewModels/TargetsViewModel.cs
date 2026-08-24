@@ -64,6 +64,16 @@ namespace EasyFarm.ViewModels
             set { Set(ref Config.Instance.ClaimedFilter, value); }
         }
 
+        /// <summary>
+        ///     Bypasses the name list above so the closest valid mob is taken
+        ///     regardless of name. The Avoided list still applies.
+        /// </summary>
+        public bool KillAnyMob
+        {
+            get { return Config.Instance.KillAnyMobFilter; }
+            set { Set(ref Config.Instance.KillAnyMobFilter, value); }
+        }
+
         protected override void Add()
         {
             if(string.IsNullOrWhiteSpace(Value)) return;            
