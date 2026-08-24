@@ -133,6 +133,11 @@ namespace EasyFarm.UserSettings
             get => Config.Instance.PartyFilter;
             set => Config.Instance.PartyFilter = value;
         }
+        public bool KillAnyMobFilter
+        {
+            get => Config.Instance.KillAnyMobFilter;
+            set => Config.Instance.KillAnyMobFilter = value;
+        }
         public ObservableCollection<string> TargetedMobs
         {
             get => Config.Instance.TargetedMobs;

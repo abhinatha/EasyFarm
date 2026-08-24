@@ -30,6 +30,7 @@ namespace EasyFarm.UserSettings
         int LowMagic { get; set; }
         double MeleeDistance { get; set; }
         bool PartyFilter { get; set; }
+        bool KillAnyMobFilter { get; set; }
         ObservableCollection<string> TargetedMobs { get; set; }
         string TargetName { get; set; }
         bool UnclaimedFilter { get; set; }

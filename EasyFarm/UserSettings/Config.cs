@@ -209,6 +209,13 @@ namespace EasyFarm.UserSettings
         public bool PartyFilter = true;
 
         /// <summary>
+        ///     When set, the targeted-mob name list is bypassed and any mob is
+        ///     a candidate. The ignored-mob list is still honoured, and so are
+        ///     the claim filters - this only removes the name requirement.
+        /// </summary>
+        public bool KillAnyMobFilter = false;
+
+        /// <summary>
         ///     A list of mobs that we should only kill.
         /// </summary>
         public ObservableCollection<string> TargetedMobs = new ObservableCollection<string>();
