@@ -44,6 +44,7 @@
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
             <CheckBox 
                 Grid.Row="0"
@@ -69,6 +70,15 @@
                 Margin="0 0 0 5"
                 Content="Claimed"
                 IsChecked="{Binding Claimed}" />
+            <!--Ignores the name list above and takes the closest valid mob.
+            The Avoided list is still applied.-->
+            <CheckBox 
+                Grid.Row="2"
+                Grid.Column="0"
+                Grid.ColumnSpan="2"
+                Margin="0 0 0 5"
+                Content="Any mob (ignore name list, still avoids)"
+                IsChecked="{Binding KillAnyMob}" />
         </Grid>
 
         <Grid Grid.Row="2"
