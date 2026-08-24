@@ -92,7 +92,15 @@ namespace EasyFarm.Classes
             if (mob.HasAggroed && config.AggroFilter) return true;
 
             // There is a target's list but the mob is not on it.
-            if (!MatchAny(mob.Name, config.TargetedMobs, RegexOptions.IgnoreCase) &&
+            //
+            // KillAnyMobFilter ("Any mob" on the Targets tab) skips this check
+            // so the closest valid mob is taken regardless of name. It is
+            // deliberately placed AFTER the ignored-name check above, so the
+            // Avoided list still filters mobs out - "any mob" means any mob we
+            // have not explicitly excluded, not literally anything. The claim
+            // filters below still apply too.
+            if (!config.KillAnyMobFilter &&
+                !MatchAny(mob.Name, config.TargetedMobs, RegexOptions.IgnoreCase) &&
                 config.TargetedMobs.Any())
                 return false;
 
@@ -107,10 +115,18 @@ namespace EasyFarm.Classes
             // Kill the creature if it's not claimed and unclaimed is checked.
             if (!mob.IsClaimed && config.UnclaimedFilter) return true;
 
-            // Kill the creature if it's claimed and we we don't have claim but
-            // claim is checked.
-            //FIX: Temporary fix until player.serverid is fixed.
-            if (mob.IsClaimed && config.ClaimedFilter) return true;
+            // Kill the creature if it's claimed and claim is checked.
+            //
+            // This used to return true for ANY claimed mob. The note it
+            // carried - a temporary workaround for an unreadable player
+            // server id - stopped applying once MyClaim and PartyClaim became
+            // reliable, but the blanket check stayed, so a complete
+            // stranger's claim satisfied the filter and the bot would walk
+            // over and steal mobs it had no business touching, with no aggro
+            // and no party relationship involved. Restrict it to claims we
+            // actually own; PartyClaim is party-only and presence-checked.
+            if (mob.IsClaimed && config.ClaimedFilter &&
+                (mob.MyClaim || mob.PartyClaim)) return true;
 
             // Kill only mobs that we have claim on. 
             return mob.ClaimedId == fface.PartyMember[0].ServerID;
