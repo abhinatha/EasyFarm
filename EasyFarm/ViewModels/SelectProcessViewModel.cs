@@ -18,6 +18,7 @@
 using EasyFarm.Infrastructure;
 using GalaSoft.MvvmLight.Command;
 using MahApps.Metro.Controls.Dialogs;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Linq;
@@ -36,7 +37,7 @@ namespace EasyFarm.ViewModels
         public SelectProcessViewModel(BaseMetroDialog dialog)
         {
             // When window is closed through X button.
-            Processes = new ObservableCollection<Process>();
+            Processes = new ObservableCollection<ProcessEntry>();
 
             // Close window on when "Set character" is pressed.
             SelectCommand = new RelayCommand(async () => await OnSelect());
@@ -71,9 +72,24 @@ namespace EasyFarm.ViewModels
         /// <summary>
         ///     The currently selected game session.
         /// </summary>
-        public Process SelectedProcess { get; set; }
+        public ProcessEntry SelectedEntry { get; set; }
 
-        public ObservableCollection<Process> Processes { get; set; }
+        /// <summary>
+        ///     Kept as a Process so the handlers that attach to the game are
+        ///     unchanged; the grid now selects a ProcessEntry instead.
+        /// </summary>
+        public Process SelectedProcess
+        {
+            get { return SelectedEntry == null ? null : SelectedEntry.Process; }
+            set
+            {
+                SelectedEntry = value == null
+                    ? null
+                    : Processes.FirstOrDefault(x => x.Process != null && x.Process.Id == value.Id);
+            }
+        }
+
+        public ObservableCollection<ProcessEntry> Processes { get; set; }
 
         public BaseMetroDialog Dialog { get; }
 
@@ -84,15 +100,57 @@ namespace EasyFarm.ViewModels
         {
             Processes.Clear();
 
-            Processes.AddRange(Process.GetProcessesByName(ProcessName)
-                .Where(x => !string.IsNullOrWhiteSpace((x.MainWindowTitle)))
-                .ToList());
+            var found = Snapshot(Process.GetProcessesByName(ProcessName));
+            if (found.Count == 0) found = Snapshot(Process.GetProcesses());
 
-            if (Processes.Count > 0) return;
+            foreach (var entry in found) Processes.Add(entry);
+        }
 
-            Processes.AddRange(Process.GetProcesses()
-                .Where(x => !string.IsNullOrWhiteSpace(x.MainWindowTitle))
-                .ToList());
+        /// <summary>
+        ///     Captures id, executable name and window title ONCE, at
+        ///     enumeration time.
+        ///
+        ///     Process.MainWindowTitle is a live call every time it is read: it
+        ///     goes through a MainWindowHandle that the Process object resolves
+        ///     and caches on first access. POL destroys and recreates its window
+        ///     as the game boots, so that cached handle goes dead and every
+        ///     later read returns an empty string. The grid used to bind
+        ///     straight to Process.MainWindowTitle, which is why the filter here
+        ///     could see a real title while the cell rendered blank moments
+        ///     later - a row with a process id and an empty Character Name.
+        ///     Snapshotting means the grid shows exactly what was filtered on.
+        /// </summary>
+        private static List<ProcessEntry> Snapshot(IEnumerable<Process> processes)
+        {
+            var entries = new List<ProcessEntry>();
+
+            foreach (var process in processes)
+            {
+                try
+                {
+                    // Drop any stale cached handle before reading the title.
+                    process.Refresh();
+
+                    var title = process.MainWindowTitle;
+                    if (string.IsNullOrWhiteSpace(title)) continue;
+
+                    entries.Add(new ProcessEntry
+                    {
+                        Process = process,
+                        Id = process.Id,
+                        ExecutableName = process.ProcessName,
+                        Title = title
+                    });
+                }
+                catch
+                {
+                    // Exited between enumeration and inspection, or not
+                    // readable at our privilege level. Skip it rather than
+                    // listing a row that cannot be attached to.
+                }
+            }
+
+            return entries;
         }
 
         /// <summary>
@@ -116,5 +174,17 @@ namespace EasyFarm.ViewModels
         {
             await DialogCoordinator.Instance.HideMetroDialogAsync(App.Current.MainWindow.DataContext, Dialog);
         }
+    }
+
+    /// <summary>
+    ///     A stable, already-read view of a candidate game process. Exists so
+    ///     the grid never re-reads volatile Process members while it renders.
+    /// </summary>
+    public class ProcessEntry
+    {
+        public Process Process { get; set; }
+        public int Id { get; set; }
+        public string ExecutableName { get; set; }
+        public string Title { get; set; }
     }
 }
