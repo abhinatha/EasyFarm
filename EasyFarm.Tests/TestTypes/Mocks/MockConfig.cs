@@ -8,6 +8,13 @@ namespace EasyFarm.Tests.TestTypes.Mocks
     public class MockConfig : IConfig
     {
         public bool AggroFilter { get; set; }
+        // Camp members added to satisfy IConfig - the mock was missing
+        // these since camp mode landed, which broke the test build.
+        public bool IsCampEnabled { get; set; }
+        public bool IsCampSet { get; set; }
+        public MemoryAPI.Navigation.Position CampPosition { get; set; }
+        public MemoryAPI.Zone CampZone { get; set; }
+        public double CampRadius { get; set; }
         public BattleLists BattleLists { get; set; } = new BattleLists();
         public bool ClaimedFilter { get; set; }
         public double DetectionDistance { get; set; }
@@ -26,6 +33,7 @@ namespace EasyFarm.Tests.TestTypes.Mocks
         public int LowMagic { get; set; }
         public double MeleeDistance { get; set; }
         public bool PartyFilter { get; set; }
+        public bool KillAnyMobFilter { get; set; }
         public ObservableCollection<string> TargetedMobs { get; set; } = new ObservableCollection<string>();
         public string TargetName { get; set; }
         public bool UnclaimedFilter { get; set; }
