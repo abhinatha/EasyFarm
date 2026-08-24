@@ -65,10 +65,13 @@
                                     Width="90"
                                     DisplayMemberBinding="{Binding Path=Id}" />
                     <GridViewColumn Header="Executable"
-                                    Width="110"
+                                    Width="100"
                                     DisplayMemberBinding="{Binding Path=ExecutableName}" />
-                    <GridViewColumn Header="Character Name"
-                                    Width="260"
+                    <GridViewColumn Header="Memory (MB)"
+                                    Width="90"
+                                    DisplayMemberBinding="{Binding Path=MemoryMb}" />
+                    <GridViewColumn Header="Window Title"
+                                    Width="220"
                                     DisplayMemberBinding="{Binding Path=Title}" />
                 </GridView>
             </ListView.View>
