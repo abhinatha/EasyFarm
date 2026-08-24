@@ -25,28 +25,51 @@
             </Grid.ColumnDefinitions>
             <!-- Shuts down the process selection view. -->
             <Button Content="Set Character"
+                    MinHeight="28"
                     Command="{Binding SelectCommand}" />
             <Button Grid.Column="1"
                     Content="Refresh"
+                    MinWidth="70"
+                    MinHeight="28"
+                    Margin="5 0 0 0"
                     Command="{Binding RefreshCommand}"/>
             <Button Grid.Column="2"
                     Content="Cancel"
+                    MinWidth="70"
+                    MinHeight="28"
+                    Margin="5 0 0 0"
                     Command="{Binding CancelCommand}"/>
         </Grid>
     </dialogs:CustomDialog.DialogBottom>
 
     <dialogs:CustomDialog.Content>
         <!-- A view for currently running game sessions. -->
+        <!-- MinHeight keeps the list usable when the host window is small;
+             MaxHeight plus the built-in scroll viewer stops a long process
+             list from pushing the button row off the bottom of the host. -->
         <ListView Name="LsvGameSessons"
+                  MinHeight="180"
+                  MaxHeight="400"
+                  MinWidth="420"
+                  Margin="0 5"
+                  ScrollViewer.VerticalScrollBarVisibility="Auto"
+                  ScrollViewer.HorizontalScrollBarVisibility="Auto"
                   ItemsSource="{Binding Processes}"
-                  SelectedItem="{Binding SelectedProcess}">
+                  SelectedItem="{Binding SelectedEntry}">
             <ListView.View>
-                <!-- The headers for session information. -->
+                <!-- The headers for session information. Explicit widths: the
+                     default auto-sizing collapses Character Name to the header
+                     width, so long titles render as an empty-looking cell. -->
                 <GridView>
                     <GridViewColumn Header="Process ID"
+                                    Width="90"
                                     DisplayMemberBinding="{Binding Path=Id}" />
+                    <GridViewColumn Header="Executable"
+                                    Width="110"
+                                    DisplayMemberBinding="{Binding Path=ExecutableName}" />
                     <GridViewColumn Header="Character Name"
-                                    DisplayMemberBinding="{Binding Path=MainWindowTitle}" />
+                                    Width="260"
+                                    DisplayMemberBinding="{Binding Path=Title}" />
                 </GridView>
             </ListView.View>
         </ListView>
