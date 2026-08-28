@@ -214,7 +214,19 @@ namespace EasyFarm.States
         /// </summary>
         private const double TrustReleaseRange = 30;
 
-        private void ReleaseTrust(BattleAbility trust)
+        /// <summary>
+        ///     How long to keep trying to dismiss one alter ego before falling
+        ///     back to the untargeted group dismiss.
+        /// </summary>
+        private const int ReleaseStuckSeconds = 30;
+
+        private const int ReleaseAllCooldownSeconds = 30;
+
+        private static string _releaseTargetName;
+        private static DateTime _releaseStartedAt;
+        private static DateTime _lastRetrAll = DateTime.MinValue;
+
+        private bool ReleaseTrust(BattleAbility trust)
         {
             var comp = trust.Name;
             if (comp.Contains("(UC)") || comp.Contains("II") || comp.Contains("AA"))
@@ -242,14 +254,21 @@ namespace EasyFarm.States
             // (same race the engage path had to solve), then send the bare
             // command. Range matters too - the game only dismisses a trust
             // within targeting distance.
+            // Returns false when the alter ego cannot be targeted at all -
+            // absent from the entity array, dead, or stranded out of range.
+            // That is the signature of a GHOST party entry: the party list
+            // still shows the trust, but there is nothing there to target, so
+            // no amount of targeted dismissal will ever clear it. The caller
+            // escalates to "/retr all" on a false return.
             var unit = UnitService.GetUnitByName(comp);
-            if (unit == null || !unit.IsActive || unit.IsDead) return;
-            if (unit.Distance > TrustReleaseRange) return;
+            if (unit == null || !unit.IsActive || unit.IsDead) return false;
+            if (unit.Distance > TrustReleaseRange) return false;
 
             Classes.Player.SetTarget(EliteApi, unit);
-            if (!Classes.Player.IsTargeting(EliteApi, unit)) return;
+            if (!Classes.Player.IsTargeting(EliteApi, unit)) return false;
 
             EliteApi.Windower.SendString("/refa");
+            return true;
         }
 
         private static string _lastGate;
@@ -395,6 +414,7 @@ namespace EasyFarm.States
                 if (inParty && !TrustNeedsDismissal(trust))
                 {
                     ClearAttempts(trust);
+                    if (_releaseTargetName == trust.Name) _releaseTargetName = null;
                     continue;
                 }
 
@@ -410,8 +430,46 @@ namespace EasyFarm.States
                         DateTime.Now > _lastRelease.AddSeconds(5))
                     {
                         _lastRelease = DateTime.Now;
+
+                        if (_releaseTargetName != trust.Name)
+                        {
+                            _releaseTargetName = trust.Name;
+                            _releaseStartedAt = DateTime.Now;
+                        }
+
                         Diagnostics.CombatDiag.Event("TRUST releasing " + trust.Name);
-                        ReleaseTrust(trust);
+                        var targeted = ReleaseTrust(trust);
+                        var stuck = DateTime.Now > _releaseStartedAt.AddSeconds(ReleaseStuckSeconds);
+
+                        // Escalation. A ghost party entry - the alter ego is
+                        // listed as a member but is not actually present, or is
+                        // stranded somewhere unreachable - can never be cleared
+                        // by a targeted dismiss. Without this the release
+                        // silently no-ops forever, and because this branch
+                        // returns, Run() lands on the SAME trust every pass:
+                        // no other trust is processed, nothing is resummoned,
+                        // and Check() keeps blocking combat, so the bot simply
+                        // stands there. Observed: 7,920 release attempts across
+                        // 11.5 hours, broken instantly by a manual "/retr all".
+                        //
+                        // "/retr all" takes no target, so it clears phantom
+                        // entries the targeted form cannot touch. It drops the
+                        // healthy trusts too, but they resummon on the next
+                        // passes - which is strictly better than standing still
+                        // indefinitely.
+                        if ((!targeted || stuck) &&
+                            DateTime.Now > _lastRetrAll.AddSeconds(ReleaseAllCooldownSeconds))
+                        {
+                            _lastRetrAll = DateTime.Now;
+                            _releaseStartedAt = DateTime.Now;
+                            Diagnostics.CombatDiag.Event(string.Format(
+                                "TRUST release fallback: {0} {1} - sending /retr all",
+                                trust.Name,
+                                targeted
+                                    ? "still in party after " + ReleaseStuckSeconds + "s"
+                                    : "not targetable (ghost party entry)"));
+                            EliteApi.Windower.SendString("/retr all");
+                        }
                     }
                     return;
                 }
@@ -420,6 +478,10 @@ namespace EasyFarm.States
                 // slot exists nothing can be summoned at all; if its spell
                 // is on recast, wait for it rather than summoning a
                 // lower-priority trust into the slot.
+                // The release worked (or it was never in the party): end any
+                // release campaign so a later dismissal starts a fresh clock.
+                if (_releaseTargetName == trust.Name) _releaseTargetName = null;
+
                 if (!PartyHasSpace() || MaxTrustsReached(Config.TrustPartySize)) return;
                 if (!AbilityUtils.IsRecastable(EliteApi, trust)) return;
                 if (IsBackingOff(trust)) return;
