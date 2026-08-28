@@ -208,6 +208,12 @@ namespace EasyFarm.States
             return false;
         }
 
+        /// <summary>
+        ///     Maximum range at which the game will let us dismiss an alter
+        ///     ego. Beyond this the command is silently ignored.
+        /// </summary>
+        private const double TrustReleaseRange = 30;
+
         private void ReleaseTrust(BattleAbility trust)
         {
             var comp = trust.Name;
@@ -220,8 +226,30 @@ namespace EasyFarm.States
 
             comp = comp.Replace(" ", "");
 
-            var command = string.Format("/refa {0}", comp);
-            EliteApi.Windower.SendString(command);
+            // "/refa" and its aliases (/retr, /returnfaith, /returntrust)
+            // dismiss the TARGETED alter ego. The only subcommand they accept
+            // is "all". A name argument - "/refa Koru-Moru" - is not valid
+            // syntax, so the game discarded every send.
+            //
+            // Observed: 7,920 "TRUST releasing Koru-Moru" events across an
+            // 11.5 hour session, the trust never leaving the party, and Run()
+            // returning early on that same entry every pass - which wedges the
+            // whole trust rotation and leaves the bot standing and doing
+            // nothing. That is also why ChatCommands' "/retr all" works while
+            // this never did: "all" IS a real subcommand.
+            //
+            // So: target the alter ego, confirm the cursor actually committed
+            // (same race the engage path had to solve), then send the bare
+            // command. Range matters too - the game only dismisses a trust
+            // within targeting distance.
+            var unit = UnitService.GetUnitByName(comp);
+            if (unit == null || !unit.IsActive || unit.IsDead) return;
+            if (unit.Distance > TrustReleaseRange) return;
+
+            Classes.Player.SetTarget(EliteApi, unit);
+            if (!Classes.Player.IsTargeting(EliteApi, unit)) return;
+
+            EliteApi.Windower.SendString("/refa");
         }
 
         private static string _lastGate;
