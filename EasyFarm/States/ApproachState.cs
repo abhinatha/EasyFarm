@@ -120,6 +120,21 @@ namespace EasyFarm.States
                     // after 1s without confirming) we engage whatever it was
                     // pointing at before - typically the mob that just died.
                     // Verify, then engage; a deferral just retries next pass.
+                    // Do not start a NEW fight while the trusts are being
+                    // rebuilt after an untargeted "/retr all". The dismissals
+                    // land seconds after the command, and FFXI refuses to
+                    // summon an alter ego once we are engaged - so engaging
+                    // inside that window strands us solo for the rest of the
+                    // fight. A mob already on us is exempt: that fight is
+                    // happening whether we engage or not.
+                    if (SummonTrustsState.IsRebuildingTrusts && !TargetIsAttacker)
+                    {
+                        Diagnostics.CombatDiag.Event(string.Format(
+                            "ENGAGE deferred: rebuilding trusts, holding off {0}[{1}]",
+                            Target.Name, Target.Id));
+                        return;
+                    }
+
                     if (!Player.IsTargeting(EliteApi, Target))
                     {
                         Diagnostics.CombatDiag.Event(string.Format(

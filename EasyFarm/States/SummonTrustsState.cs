@@ -146,6 +146,9 @@ namespace EasyFarm.States
             LastEngageCommand = DateTime.MinValue;
             _lastRelease = DateTime.MinValue;
             _lastGate = null;
+            _rebuildingUntil = DateTime.MinValue;
+            _releaseTargetName = null;
+            _lastRetrAll = DateTime.MinValue;
         }
 
         public SummonTrustsState(StateMemory memory) : base(memory)
@@ -221,6 +224,36 @@ namespace EasyFarm.States
         private const int ReleaseStuckSeconds = 30;
 
         private const int ReleaseAllCooldownSeconds = 30;
+
+        /// <summary>
+        ///     How long to keep the bot out of combat after an untargeted
+        ///     "/retr all" so the dismissals can land and the trusts can be
+        ///     resummoned.
+        /// </summary>
+        private const int RebuildWindowSeconds = 45;
+
+        /// <summary>
+        ///     Armed when "/retr all" goes out. The command is asynchronous:
+        ///     the party list still reported all four trusts nearly three
+        ///     seconds after it was sent. Without an explicit settle window
+        ///     Check() sees a full party, returns false, and ApproachState
+        ///     engages half a second later - then the dismissals land and FFXI
+        ///     will not let an alter ego be summoned while engaged, so the
+        ///     trusts never come back and the fight is fought solo. Observed:
+        ///     /retr all 11:08:42, engage 11:08:45.6, trusts gone 11:08:53,
+        ///     dead 11:12:31 on a worm that took 90s with a full party.
+        /// </summary>
+        private static DateTime _rebuildingUntil = DateTime.MinValue;
+
+        public static bool IsRebuildingTrusts
+        {
+            get { return DateTime.Now < _rebuildingUntil; }
+        }
+
+        public static void FinishRebuild()
+        {
+            _rebuildingUntil = DateTime.MinValue;
+        }
 
         private static string _releaseTargetName;
         private static DateTime _releaseStartedAt;
@@ -469,6 +502,7 @@ namespace EasyFarm.States
                                     ? "still in party after " + ReleaseStuckSeconds + "s"
                                     : "not targetable (ghost party entry)"));
                             EliteApi.Windower.SendString("/retr all");
+                            _rebuildingUntil = DateTime.Now.AddSeconds(RebuildWindowSeconds);
                         }
                     }
                     return;
@@ -492,6 +526,12 @@ namespace EasyFarm.States
                 Executor.UseActions(new[] {trust});
                 return;
             }
+
+            // Fell through the whole list without acting: every enabled trust
+            // is present and healthy, so a rebuild after "/retr all" is done.
+            // Release the combat hold early rather than idling out the full
+            // window.
+            FinishRebuild();
         }
     }
 }
